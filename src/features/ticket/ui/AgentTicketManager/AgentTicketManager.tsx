@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { MdPhone, MdSkipNext, MdCheckCircle } from "react-icons/md";
 import { TbDatabaseOff } from "react-icons/tb";
 import { FaCoffee } from "react-icons/fa";
+import { FiBriefcase, FiInbox, FiLogOut } from "react-icons/fi";
 import "./AgentTicketManager.css";
 import { supabase } from "../../../../shared/api/supabaseClient";
 import type { Ticket, SousService } from "../../../../shared/types";
@@ -574,7 +575,7 @@ export const AgentTicketManager: React.FC = () => {
             </div>
           ) : availableGuichets.length > 0 ? (
             <div className="status-placeholder">
-              <div className="placeholder-icon">🏢</div>
+              <div className="placeholder-icon"><FiBriefcase style={{ color: 'var(--primary-color)' }} /></div>
               <h3>Sélectionnez votre poste de travail</h3>
               <p style={{ marginBottom: "2rem" }}>
                 Veuillez choisir le guichet sur lequel vous êtes connecté
@@ -619,7 +620,7 @@ export const AgentTicketManager: React.FC = () => {
                 className="placeholder-icon"
                 style={{ fontSize: "3rem", opacity: 0.5 }}
               >
-                📭
+                <FiInbox style={{ color: 'var(--primary-color)' }} />
               </div>
               <h3>Aucun poste libre</h3>
               <p>Aucun guichet n'est configuré pour cette agence.</p>
@@ -645,7 +646,7 @@ export const AgentTicketManager: React.FC = () => {
                   {guichetName
                     ? `${guichetName} ${guichetAppellations[guichetName] ? `(${guichetAppellations[guichetName]})` : ""}`
                     : "Guichet non assigné"}{" "}
-                  (Quitter)
+                  <FiLogOut style={{ marginLeft: '8px', verticalAlign: 'middle', color: 'var(--danger-color)' }} />
                 </span>
               </div>
             </header>

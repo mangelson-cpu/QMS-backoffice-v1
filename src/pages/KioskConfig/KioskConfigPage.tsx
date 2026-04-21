@@ -25,7 +25,7 @@ export const KioskConfigPage: React.FC = () => {
           : "Mot de passe supprimé (borne déverrouillée).",
       );
       setIsSuccess(true);
-      setKioskPassword(""); // Clear the input after save
+      setKioskPassword("");
     } catch (err: any) {
       console.error(err);
       setMessage(err.message || "Erreur lors de la mise à jour.");
@@ -103,9 +103,8 @@ export const KioskConfigPage: React.FC = () => {
 
             {message && (
               <div
-                className={`auth-message ${
-                  isSuccess ? "auth-message--success" : "auth-message--error"
-                }`}
+                className={`auth-message ${isSuccess ? "auth-message--success" : "auth-message--error"
+                  }`}
                 style={{
                   marginTop: "1.5rem",
                   display: "flex",

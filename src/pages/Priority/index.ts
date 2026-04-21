@@ -1,1 +1,1 @@
-export * from "./PriorityPage";
+export * from "./PrioritiesPage";

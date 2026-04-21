@@ -8,8 +8,6 @@ interface Props {
   userRole: UserRole;
 }
 
-
-
 export const PriorityManager: React.FC<Props> = ({ userRole }) => {
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [showModal, setShowModal] = useState(false);

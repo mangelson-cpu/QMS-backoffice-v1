@@ -5,10 +5,6 @@ import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import type { UserRole, Agence } from "./shared/types";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { MainLayout } from "./app/layout/MainLayout";
-import { KioskPage } from "./pages/Kiosk";
-import { PriorityPage } from "./pages/Priority";
-import { DonePage } from "./pages/Done";
-import { PublicDashboardPage } from "./pages/PublicDashboard";
 import { LoginPage } from "./pages/Login";
 import { DashboardPage } from "./pages/Dashboard";
 import { AgentsPage } from "./pages/Agents";
@@ -144,22 +140,6 @@ function App() {
 
       <BrowserRouter>
         <Routes>
-          <Route
-            path="/ticket"
-            element={<KioskPage userAgenceId={userAgenceId} />}
-          />
-          <Route path="/ticket/priority" element={<PriorityPage />} />
-          <Route path="/ticket/done" element={<DonePage />} />
-
-          <Route
-            path="/public-dashboard"
-            element={<PublicDashboardPage userAgenceId={userAgenceId} />}
-          />
-
-          <Route path="/:slug/borne" element={<KioskPage />} />
-          <Route path="/:slug/borne/priority" element={<PriorityPage />} />
-          <Route path="/:slug/borne/done" element={<DonePage />} />
-          <Route path="/:slug/screen" element={<PublicDashboardPage />} />
 
           {userRole ? (
             <Route
