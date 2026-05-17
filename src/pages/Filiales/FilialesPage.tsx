@@ -1,0 +1,178 @@
+import React, { useState, useEffect } from 'react';
+import { FiPlus, FiBriefcase } from 'react-icons/fi';
+
+interface Filiale {
+  id: string;
+  nom: string;
+  schema_name: string;
+  createdAt: string;
+}
+
+export const FilialesPage: React.FC = () => {
+  const [filiales, setFiliales] = useState<Filiale[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [nomFiliale, setNomFiliale] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const fetchFiliales = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:3000/api/filiales', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFiliales(data.filiales || []);
+      }
+    } catch (err) {
+      console.error('Erreur lors de la récupération des filiales', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchFiliales();
+  }, []);
+
+  const handleCreateFiliale = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
+    
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:3000/api/filiales', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ nom_filiale: nomFiliale })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur lors de la création');
+      }
+
+      setMessage(data.message);
+      setNomFiliale('');
+      fetchFiliales();
+      
+      setTimeout(() => {
+        setIsModalOpen(false);
+        setMessage('');
+      }, 2000);
+    } catch (err: any) {
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="filiales-page">
+      <header className="page-header">
+        <div className="header-text">
+          <h1>Gestion des filiales</h1>
+          <p>Supervisez et créez de nouvelles filiales isolées (architecture multi-tenant)</p>
+        </div>
+        <button className="primary-gradient-btn" onClick={() => setIsModalOpen(true)}>
+          <FiPlus style={{ marginRight: '0.5rem', display: 'inline-block', verticalAlign: 'middle' }} />
+          Créer une filiale
+        </button>
+      </header>
+
+      <div className="content-card">
+        <table className="premium-table">
+          <thead>
+            <tr>
+              <th>Nom de la Filiale</th>
+              <th>Schéma BDD</th>
+              <th>Date de création</th>
+              <th style={{ textAlign: "right" }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filiales.length === 0 ? (
+              <tr>
+                <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: "var(--text-secondary)" }}>
+                  Aucune filiale trouvée
+                </td>
+              </tr>
+            ) : (
+              filiales.map((filiale) => (
+                <tr key={filiale.id}>
+                  <td className="font-bold">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <FiBriefcase color="var(--primary-color)" />
+                      {filiale.nom}
+                    </div>
+                  </td>
+                  <td className="text-secondary">{filiale.schema_name}</td>
+                  <td className="text-secondary">
+                    {new Date(filiale.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {/* Boutons d'actions factices pour le moment (pour le design) */}
+                    <button className="icon-btn edit" title="Modifier (Non implémenté)">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {isModalOpen && (
+        <div className="modal-overlay" onClick={() => !loading && setIsModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={() => setIsModalOpen(false)}>
+              ×
+            </button>
+            <div className="auth-card-header" style={{ marginBottom: "2rem" }}>
+              <div className="auth-card-icon"><FiBriefcase style={{ color: 'var(--primary-color)' }} /></div>
+              <h2 className="auth-card-title">Nouvelle Filiale</h2>
+              <p className="auth-card-subtitle">
+                La création génèrera un schéma de base de données isolé complet.
+              </p>
+            </div>
+
+            <form className="auth-form" onSubmit={handleCreateFiliale}>
+              <div className="auth-input-group">
+                <label className="auth-input-label">Nom de la filiale</label>
+                <input
+                  type="text"
+                  className="auth-input"
+                  value={nomFiliale}
+                  onChange={(e) => setNomFiliale(e.target.value)}
+                  placeholder="Ex: Baobab Sénégal"
+                  required
+                />
+              </div>
+              
+              <button type="submit" className="auth-button" disabled={loading}>
+                {loading ? 'Création et génération de BDD...' : 'Créer la filiale'}
+              </button>
+
+              {message && (
+                <div 
+                  className={`auth-message ${message.includes('Erreur') ? 'auth-message--error' : 'auth-message--success'}`}
+                  style={{ marginTop: '1rem' }}
+                >
+                  {message}
+                </div>
+              )}
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

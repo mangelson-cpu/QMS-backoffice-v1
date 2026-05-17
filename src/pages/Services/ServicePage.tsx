@@ -9,7 +9,12 @@ interface Props {
 
 export const ServicePage = ({ userRole, currentUserAgenceId }: Props) => {
   if (userRole === "super_admin") {
-    return <ServiceManager key="super-admin-services" userRole={userRole} />;
+    return (
+      <ServiceManager 
+        key="global" 
+        userRole={userRole} 
+      />
+    );
   }
 
   return (

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useDynamicPageSize } from "../../../shared/hooks/useDynamicPageSize";
-import { supabase } from "../../../shared/api/supabaseClient";
+import { apiClient } from "../../../shared/api/apiClient";
 import { FiUser, FiEdit2 } from "react-icons/fi";
 import type { UserRole, Agence, User } from "../../../shared/types";
 
@@ -11,7 +11,7 @@ interface Props {
 }
 
 export const CreateUserForm: React.FC<Props> = ({
-  agences,
+  agences: _agencesFromProps,
   userRole,
   currentUserAgenceId,
 }) => {
@@ -31,11 +31,66 @@ export const CreateUserForm: React.FC<Props> = ({
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"user" | "admin">("user");
   const [agenceId, setAgenceId] = useState<string>("");
+  const [filialeId, setFilialeId] = useState<string>("");
+  const [filiales, setFiliales] = useState<any[]>([]);
+  const [agencesForFiliale, setAgencesForFiliale] = useState<Agence[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
   const [fetchError, setFetchError] = useState("");
+
+  // Charger les filiales au montage (super_admin uniquement)
+  useEffect(() => {
+    if (userRole === "super_admin") {
+      const loadFiliales = async () => {
+        try {
+          const data = await apiClient.get('/filiales');
+          setFiliales(data.filiales || []);
+        } catch (err) {
+          console.error('Erreur chargement filiales:', err);
+        }
+      };
+      loadFiliales();
+    }
+  }, [userRole]);
+
+  // Quand la filiale change (super_admin) ou au montage (admin), charger les agences
+  useEffect(() => {
+    const loadAgences = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const headers: Record<string, string> = {
+          Authorization: `Bearer ${token}`
+        };
+
+        if (userRole === "super_admin") {
+          if (!filialeId) {
+            setAgencesForFiliale([]);
+            return;
+          }
+          headers['x-filiale-id'] = filialeId;
+        }
+
+        const res = await fetch('http://localhost:3000/api/agences', { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setAgencesForFiliale(data.agences || []);
+        }
+      } catch (err) {
+        console.error('Erreur chargement agences:', err);
+        setAgencesForFiliale([]);
+      }
+    };
+
+    if (userRole === "super_admin" && filialeId) {
+      loadAgences();
+    } else if (userRole === "admin") {
+      loadAgences();
+    } else {
+      setAgencesForFiliale([]);
+    }
+  }, [filialeId, userRole]);
 
   useEffect(() => {
     if (userRole === "admin" && currentUserAgenceId) {
@@ -46,40 +101,18 @@ export const CreateUserForm: React.FC<Props> = ({
   const fetchUsers = useCallback(async (ignore: boolean = false) => {
     setFetchError("");
     try {
-      const query = supabase.from("users").select(`
-          *,
-          agence:agence_id (id, nom)
-        `);
-
-      const { data, error } = await query.order("created_at", {
-        ascending: false,
-      });
-
-      if (error) {
-        throw error;
-      }
-
+      const data = await apiClient.get('/auth/users');
       if (ignore) return;
 
-      if (data) {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        const currentUserId = user?.id;
-
-        const filteredUsers = (data as User[]).filter(
-          (u) => u.id !== currentUserId,
-        );
-        setUsers(filteredUsers);
-        setCurrentPage(1);
-      }
+      const currentUserId = JSON.parse(atob(localStorage.getItem('token')?.split('.')[1] || '')).id;
+      const filteredUsers = (data.users as User[]).filter(u => u.id !== currentUserId);
+      setUsers(filteredUsers);
+      setCurrentPage(1);
     } catch (err) {
       if (ignore) return;
       console.error("fetchUsers erreur:", err);
       const error = err as Error;
-      setFetchError(
-        error.message || "Erreur réseau inconnue lors du chargement.",
-      );
+      setFetchError(error.message || "Erreur réseau inconnue lors du chargement.");
       setUsers([]);
     }
   }, []);
@@ -104,23 +137,14 @@ export const CreateUserForm: React.FC<Props> = ({
     setMessage("");
 
     try {
-      const { data, error } = await supabase.rpc("create_user_secure", {
-        p_email: email,
-        p_password: password,
-        p_nom_user: nom,
-        p_role: role,
-        p_agence_id: agenceId || null,
+      await apiClient.post('/auth/users', {
+        nom_user: nom,
+        email,
+        password,
+        role,
+        filiale_id: userRole === 'super_admin' ? (filialeId || null) : undefined,
+        agence_id: agenceId || null,
       });
-
-      if (error) throw error;
-
-      const result = data as { success: boolean; message: string };
-
-      if (!result.success) {
-        setMessage(result.message);
-        setIsSuccess(false);
-        return;
-      }
 
       setMessage("Utilisateur créé avec succès");
       setIsSuccess(true);
@@ -147,6 +171,7 @@ export const CreateUserForm: React.FC<Props> = ({
     setEmail(user.email);
     setPassword("");
     setRole(user.role as "user" | "admin");
+    setFilialeId((user as any).filiale?.id || (user as any).filiale_id || "");
     setAgenceId(user.agence_id || user.agence?.id || "");
     setShowEditModal(true);
     setMessage("");
@@ -159,24 +184,14 @@ export const CreateUserForm: React.FC<Props> = ({
     setMessage("");
 
     try {
-      const { data, error } = await supabase.rpc("update_user_secure", {
-        p_user_id: editingUser.id,
-        p_email: email,
-        p_password: password || null,
-        p_nom_user: nom,
-        p_role: role,
-        p_agence_id: agenceId || null,
+      await apiClient.put(`/auth/users/${editingUser.id}`, { 
+        nom_user: nom,
+        email,
+        new_password: password || undefined,
+        role,
+        filiale_id: userRole === 'super_admin' ? (filialeId || null) : undefined,
+        agence_id: agenceId || null,
       });
-
-      if (error) throw error;
-
-      const result = data as { success: boolean; message: string };
-
-      if (!result.success) {
-        setMessage(result.message);
-        setIsSuccess(false);
-        return;
-      }
 
       setMessage("Utilisateur mis à jour avec succès");
       setIsSuccess(true);
@@ -203,6 +218,8 @@ export const CreateUserForm: React.FC<Props> = ({
     setPassword("");
     setRole("user");
     setEditingUser(null);
+    setFilialeId("");
+    setAgencesForFiliale([]);
 
     if (userRole !== "admin") {
       setAgenceId("");
@@ -252,6 +269,23 @@ export const CreateUserForm: React.FC<Props> = ({
 
             <form className="auth-form" onSubmit={handleSubmit}>
               <div className="auth-input-grid">
+                {userRole === "super_admin" && (
+                  <div className="auth-input-group" style={{ gridColumn: "span 2" }}>
+                    <label className="auth-input-label">Filiale</label>
+                    <select
+                      className="auth-select"
+                      value={filialeId}
+                      onChange={(e) => { setFilialeId(e.target.value); setAgenceId(""); }}
+                      required
+                      style={{ width: "100%" }}
+                    >
+                      <option value="">Sélectionner une filiale</option>
+                      {filiales.map(f => (
+                        <option key={f.id} value={f.id}>{f.nom}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="auth-input-group">
                   <label className="auth-input-label">Nom complet</label>
                   <input
@@ -306,14 +340,14 @@ export const CreateUserForm: React.FC<Props> = ({
                     className="auth-select"
                     value={agenceId}
                     onChange={(e) => setAgenceId(e.target.value)}
-                    disabled={userRole === "admin"}
+                    disabled={userRole === "admin" || (userRole === "super_admin" && !filialeId)}
                   >
                     <option value="">
                       {userRole === "super_admin"
-                        ? "Aucune agence (Super Admin)"
+                        ? (filialeId ? "Sélectionner une agence" : "Choisissez d'abord une filiale")
                         : "Sélectionner une agence"}
                     </option>
-                    {agences.map((a) => (
+                    {(userRole === "super_admin" || userRole === "admin" ? agencesForFiliale : _agencesFromProps).map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.nom}
                       </option>
@@ -374,6 +408,23 @@ export const CreateUserForm: React.FC<Props> = ({
 
             <form className="auth-form" onSubmit={handleEditSubmit}>
               <div className="auth-input-grid">
+                {userRole === "super_admin" && (
+                  <div className="auth-input-group" style={{ gridColumn: "span 2" }}>
+                    <label className="auth-input-label">Filiale</label>
+                    <select
+                      className="auth-select"
+                      value={filialeId}
+                      onChange={(e) => { setFilialeId(e.target.value); setAgenceId(""); }}
+                      required
+                      style={{ width: "100%" }}
+                    >
+                      <option value="">Sélectionner une filiale</option>
+                      {filiales.map(f => (
+                        <option key={f.id} value={f.id}>{f.nom}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="auth-input-group">
                   <label className="auth-input-label">Nom complet</label>
                   <input
@@ -431,14 +482,14 @@ export const CreateUserForm: React.FC<Props> = ({
                     className="auth-select"
                     value={agenceId}
                     onChange={(e) => setAgenceId(e.target.value)}
-                    disabled={userRole === "admin"}
+                    disabled={userRole === "admin" || (userRole === "super_admin" && !filialeId)}
                   >
                     <option value="">
                       {userRole === "super_admin"
-                        ? "Aucune agence (Super Admin)"
+                        ? (filialeId ? "Sélectionner une agence" : "Choisissez d'abord une filiale")
                         : "Sélectionner une agence"}
                     </option>
-                    {agences.map((a) => (
+                    {(userRole === "super_admin" || userRole === "admin" ? agencesForFiliale : _agencesFromProps).map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.nom}
                       </option>
@@ -481,6 +532,7 @@ export const CreateUserForm: React.FC<Props> = ({
             <tr>
               <th>Nom</th>
               <th>Email</th>
+              {userRole === "super_admin" && <th>Filiale</th>}
               <th>Agence</th>
               <th>Rôle</th>
               <th style={{ textAlign: "right" }}>Actions</th>
@@ -496,6 +548,7 @@ export const CreateUserForm: React.FC<Props> = ({
                 <tr key={user.id}>
                   <td className="font-bold">{user.nom_user}</td>
                   <td className="text-secondary">{user.email}</td>
+                  {userRole === "super_admin" && <td>{(user as any).filiale?.nom || "-"}</td>}
                   <td>{user.agence?.nom || "Non assignée"}</td>
                   <td>
                     <span className={`status-badge ${user.role}`}>

@@ -1,7 +1,5 @@
 import "./App.css";
 import { useState, useEffect } from "react";
-import { supabase } from "./shared/api/supabaseClient";
-import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import type { UserRole, Agence } from "./shared/types";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { MainLayout } from "./app/layout/MainLayout";
@@ -15,6 +13,7 @@ import { GuichetPage } from "./pages/Guichets";
 import { SettingsPage } from "./pages/Settings";
 import { KioskConfigPage } from "./pages/KioskConfig/KioskConfigPage";
 import { PrioritiesPage } from "./pages/Priority/PrioritiesPage";
+import { FilialesPage } from "./pages/Filiales/FilialesPage";
 import { ThemeProvider } from "./shared/context/ThemeContext";
 
 const LoadingOverlay = ({ message }: { message: string }) => (
@@ -37,54 +36,39 @@ function App() {
   useEffect(() => {
     const fetchAgences = async () => {
       try {
-        const { data } = await supabase.from("agence").select("*");
-        setAgences(data ?? []);
+        // Les agences ne seront chargées que quand on est connecté et que le tenant est résolu
+        // Pour l'instant on laisse un tableau vide, les pages qui en ont besoin les chargent elles-mêmes
+        setAgences([]);
       } catch (err) {
         console.error("Erreur fetchAgences:", err);
       }
     };
 
-    const loadProfile = async (userId: string) => {
-      try {
-        const { data: profile, error } = await supabase
-          .from("users")
-          .select("role, agence_id")
-          .eq("id", userId)
-          .single();
-
-        if (error) {
-          console.error("Erreur profile:", error);
-          return;
-        }
-
-        if (profile) {
-          const role = profile.role as UserRole;
-          const agenceId = profile.agence_id;
-          setUserRole(role);
-          setUserAgenceId(agenceId);
-          localStorage.setItem("user_role", role);
-          localStorage.setItem("user_agence_id", agenceId || "");
-        }
-      } catch (err) {
-        console.error("Exception loadProfile:", err);
-      }
-    };
-
     const checkSession = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (session) {
-          await loadProfile(session.user.id);
-        } else {
-          console.log("No active session, keeping local cache for stability");
+        const token = localStorage.getItem("token");
+        if (token) {
+          const res = await fetch("http://localhost:3000/api/auth/me", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          
+          if (res.ok) {
+            const data = await res.json();
+            const role = data.user.role as UserRole;
+            const agenceId = data.user.agence_id;
+            
+            setUserRole(role);
+            setUserAgenceId(agenceId);
+            localStorage.setItem("user_role", role);
+            localStorage.setItem("user_agence_id", agenceId || "");
+          } else {
+            console.warn("Token invalide ou expiré");
+            localStorage.removeItem("token");
+            setUserRole(null);
+          }
         }
       } catch (err) {
-        console.error(
-          "Session check skipped/failed, keeping local state:",
-          err,
-        );
+        console.error("Erreur lors de la vérification de session:", err);
       }
       setInitialLoading(false);
     };
@@ -94,39 +78,17 @@ function App() {
     fetchAgences();
     checkSession();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (event: AuthChangeEvent, session: Session | null) => {
-        console.log("Auth Event Debug:", event);
-
-        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-          if (session) {
-            setTimeout(() => {
-              loadProfile(session.user.id).catch(console.error);
-            }, 0);
-          }
-        }
-      },
-    );
-
     return () => {
       clearTimeout(safetyTimeout);
-      listener.subscription.unsubscribe();
     };
   }, []);
 
   const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (err) {
-      console.error("Erreur lors de la déconnexion:", err);
-    } finally {
-      setUserRole(null);
-      setUserAgenceId(null);
-      localStorage.clear();
-      sessionStorage.clear();
-
-      window.location.replace("/login");
-    }
+    setUserRole(null);
+    setUserAgenceId(null);
+    localStorage.clear();
+    sessionStorage.clear();
+    window.location.replace("/login");
   };
 
   const handleLoginSuccess = (role: UserRole) => {
@@ -177,6 +139,7 @@ function App() {
                 }
               />
               <Route path="/agences" element={<AgencePage />} />
+              <Route path="/filiales" element={<FilialesPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/kiosk-config" element={<KioskConfigPage />} />
               <Route

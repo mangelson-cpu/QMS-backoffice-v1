@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useDynamicPageSize } from "../../shared/hooks/useDynamicPageSize";
-import { supabase } from "../../shared/api/supabaseClient";
-import type { Guichet, UserRole } from "../../shared/types";
-import { FiTag } from "react-icons/fi";
+import { apiClient } from "../../shared/api/apiClient";
+import type { Guichet, UserRole, Service, GuichetService } from "../../shared/types";
+import { FiTag, FiTool } from "react-icons/fi";
 import "./GuichetPage.css";
 
 interface Props {
@@ -28,37 +28,43 @@ export const GuichetPage: React.FC<Props> = ({
   const [message, setMessage] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  
+  // États pour l'affectation des services
+  const [services, setServices] = useState<Service[]>([]);
+  const [assignments, setAssignments] = useState<GuichetService[]>([]);
+  const [showServiceModal, setShowServiceModal] = useState(false);
+  const [selectedGuichetForServices, setSelectedGuichetForServices] = useState("");
+  const [localSelectedServices, setLocalSelectedServices] = useState<string[]>([]);
+
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const { itemsPerPage, needsPagination } = useDynamicPageSize(
     tableContainerRef,
     GUICHET_OPTIONS.length,
   );
 
-  const fetchGuichets = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     if (!currentUserAgenceId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("guichet")
-        .select("*")
-        .eq("agence_id", currentUserAgenceId)
-        .order("nom_guichet", { ascending: true });
-
-      if (error) throw error;
-      setGuichets(data as Guichet[]);
+      const [guichetRes, serviceRes, assignRes] = await Promise.all([
+        apiClient.get(`/guichets?agence_id=${currentUserAgenceId}`),
+        apiClient.get('/services'),
+        apiClient.get(`/guichets/services?agence_id=${currentUserAgenceId}`)
+      ]);
+      
+      setGuichets(guichetRes.guichets || []);
+      setServices(serviceRes.services || []);
+      setAssignments(assignRes.guichetServices || []);
     } catch (err) {
-      console.error(
-        "Erreur lors de la récupération des guichets:",
-        (err as Error).message,
-      );
+      console.error("Erreur lors de la récupération des données:", (err as Error).message);
     } finally {
       setLoading(false);
     }
   }, [currentUserAgenceId]);
 
   useEffect(() => {
-    fetchGuichets();
-  }, [fetchGuichets]);
+    fetchData();
+  }, [fetchData]);
 
   const handleOpenModal = (
     guichetName?: string,
@@ -76,31 +82,15 @@ export const GuichetPage: React.FC<Props> = ({
     setMessage("");
 
     try {
-      if (appellation.trim() === "") {
-        const { error } = await supabase.from("guichet").upsert(
-          {
-            nom_guichet: selectedGuichet,
-            appellation: null,
-            agence_id: currentUserAgenceId,
-          },
-          { onConflict: "nom_guichet, agence_id" },
-        );
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("guichet").upsert(
-          {
-            nom_guichet: selectedGuichet,
-            appellation: appellation.trim(),
-            agence_id: currentUserAgenceId,
-          },
-          { onConflict: "nom_guichet, agence_id" },
-        );
-        if (error) throw error;
-      }
+      await apiClient.post('/guichets', {
+        nom_guichet: selectedGuichet,
+        appellation: appellation.trim() === "" ? null : appellation.trim(),
+        agence_id: currentUserAgenceId,
+      });
 
       setIsSuccess(true);
       setMessage("Appellation enregistrée avec succès");
-      await fetchGuichets();
+      await fetchData();
 
       setTimeout(() => {
         setShowModal(false);
@@ -125,14 +115,8 @@ export const GuichetPage: React.FC<Props> = ({
 
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from("guichet")
-        .delete()
-        .eq("nom_guichet", nomGuichet)
-        .eq("agence_id", currentUserAgenceId);
-
-      if (error) throw error;
-      await fetchGuichets();
+      await apiClient.delete(`/guichets?nom_guichet=${encodeURIComponent(nomGuichet)}&agence_id=${currentUserAgenceId}`);
+      await fetchData();
     } catch (err) {
       alert("Erreur: " + (err as Error).message);
     } finally {
@@ -146,12 +130,53 @@ export const GuichetPage: React.FC<Props> = ({
 
   const allGuichetsDisplay = GUICHET_OPTIONS.map((opt) => {
     const dbGuichet = guichets.find((g) => g.nom_guichet === opt);
+    const assignedServices = assignments
+      .filter(a => a.nom_guichet === opt)
+      .map(a => a.service?.nom_service)
+      .filter(Boolean) as string[];
+
     return {
       nom_guichet: opt,
       appellation: dbGuichet?.appellation || null,
       isConfigured: !!dbGuichet,
+      services: assignedServices
     };
   });
+
+  const handleOpenServiceModal = (nomGuichet: string) => {
+    setSelectedGuichetForServices(nomGuichet);
+    const alreadyAssigned = assignments
+      .filter((a) => a.nom_guichet === nomGuichet)
+      .map((a) => a.service_id);
+    setLocalSelectedServices(alreadyAssigned);
+    setShowServiceModal(true);
+  };
+
+  const handleToggleLocalService = (serviceId: string) => {
+    setLocalSelectedServices((prev) =>
+      prev.includes(serviceId)
+        ? prev.filter((id) => id !== serviceId)
+        : [...prev, serviceId]
+    );
+  };
+
+  const handleSaveServices = async () => {
+    if (!currentUserAgenceId) return;
+    setLoading(true);
+    try {
+      await apiClient.post('/guichets/services', {
+        nom_guichet: selectedGuichetForServices,
+        agence_id: currentUserAgenceId,
+        service_ids: localSelectedServices
+      });
+      await fetchData();
+      setShowServiceModal(false);
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="services-page">
@@ -259,6 +284,56 @@ export const GuichetPage: React.FC<Props> = ({
         </div>
       )}
 
+      {showServiceModal && (
+        <div className="modal-overlay" onClick={() => !loading && setShowServiceModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={() => setShowServiceModal(false)}>×</button>
+            <div className="auth-card-header" style={{ marginBottom: "2rem" }}>
+              <div className="auth-card-icon"><FiTool style={{ color: 'var(--primary-color)' }} /></div>
+              <h2 className="auth-card-title">Services du {selectedGuichetForServices}</h2>
+              <p className="auth-card-subtitle">Cochez les services que ce guichet doit traiter</p>
+            </div>
+            
+            <div className="services-checklist-container" style={{ maxHeight: "300px", overflowY: "auto", marginBottom: "2rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "0.8rem" }}>
+                {services.map((service) => (
+                  <label key={service.id} className={`checklist-item-compact ${localSelectedServices.includes(service.id) ? "checked" : ""}`} style={{
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "0.8rem",
+                    borderRadius: "8px",
+                    background: localSelectedServices.includes(service.id) ? "#f0fdf4" : "#f8fafc",
+                    border: `1px solid ${localSelectedServices.includes(service.id) ? "#22c55e" : "#e2e8f0"}`,
+                    cursor: "pointer",
+                    transition: "all 0.2s"
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={localSelectedServices.includes(service.id)}
+                      onChange={() => handleToggleLocalService(service.id)}
+                      style={{ marginRight: "12px", width: "18px", height: "18px" }}
+                    />
+                    <span style={{ fontWeight: 500, color: localSelectedServices.includes(service.id) ? "#166534" : "#475569" }}>
+                      {service.nom_service}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {services.length === 0 && <p style={{ textAlign: "center", color: "#64748b" }}>Aucun service disponible.</p>}
+            </div>
+
+            <div className="modal-actions" style={{ display: "flex", gap: "1rem" }}>
+              <button className="auth-button" onClick={handleSaveServices} disabled={loading} style={{ flex: 1 }}>
+                {loading ? "Enregistrement..." : "Enregistrer"}
+              </button>
+              <button className="auth-button secondary" onClick={() => setShowServiceModal(false)} disabled={loading} style={{ flex: 1 }}>
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="content-card" ref={tableContainerRef}>
         <table className="premium-table">
           <thead>
@@ -291,6 +366,7 @@ export const GuichetPage: React.FC<Props> = ({
                       </span>
                     )}
                   </td>
+
                   <td>
                     {g.isConfigured && g.appellation ? (
                       <span className="status-badge user">Personnalisé</span>
@@ -299,12 +375,14 @@ export const GuichetPage: React.FC<Props> = ({
                     )}
                   </td>
                   <td style={{ textAlign: "right" }}>
+
                     <button
                       className="icon-btn edit"
                       onClick={() =>
                         handleOpenModal(g.nom_guichet, g.appellation || "")
                       }
                       title="Modifier l'appellation"
+                      style={{ marginRight: "8px" }}
                     >
                       <svg
                         viewBox="0 0 24 24"

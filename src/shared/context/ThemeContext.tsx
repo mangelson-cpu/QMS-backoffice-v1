@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { supabase } from "../api/supabaseClient";
 
 interface ThemeColors {
   primaryColor: string;
@@ -48,55 +47,23 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [colors, setColors] = useState<ThemeColors>(DEFAULT_COLORS);
   const [loading, setLoading] = useState(true);
 
-  const fetchColors = useCallback(async () => {
+  // Charger les couleurs depuis le localStorage (ou défaut)
+  useEffect(() => {
     try {
-      const { data, error } = await supabase
-        .from("app_settings")
-        .select("key, value")
-        .in("key", ["primary_color", "secondary_color"]);
-
-      if (error) {
-        console.error("Erreur chargement thème:", error);
-        return;
-      }
-
-      if (data && data.length > 0) {
-        const newColors = { ...DEFAULT_COLORS };
-        for (const row of data) {
-          if (row.key === "primary_color") newColors.primaryColor = row.value;
-          if (row.key === "secondary_color") newColors.secondaryColor = row.value;
-        }
-        setColors(newColors);
-        setCSSVariables(newColors);
+      const saved = localStorage.getItem("theme_colors");
+      if (saved) {
+        const parsed = JSON.parse(saved) as ThemeColors;
+        setColors(parsed);
+        setCSSVariables(parsed);
       } else {
         setCSSVariables(DEFAULT_COLORS);
       }
-    } catch (err) {
-      console.error("Exception thème:", err);
+    } catch {
       setCSSVariables(DEFAULT_COLORS);
     } finally {
       setLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    fetchColors();
-
-    const channel = supabase
-      .channel("app_settings_changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "app_settings" },
-        () => {
-          fetchColors();
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchColors]);
 
 
   const applyColorsLocally = useCallback((newColors: ThemeColors) => {
@@ -106,21 +73,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateColors = useCallback(async (newColors: ThemeColors): Promise<{ success: boolean; error?: string }> => {
     try {
-      const updates = [
-        { key: "primary_color", value: newColors.primaryColor, updated_at: new Date().toISOString() },
-        { key: "secondary_color", value: newColors.secondaryColor, updated_at: new Date().toISOString() },
-      ];
-
-      const { error } = await supabase
-        .from("app_settings")
-        .upsert(updates, { onConflict: "key" });
-
-      if (error) {
-        return { success: false, error: error.message };
-      }
-
       setColors(newColors);
       setCSSVariables(newColors);
+      localStorage.setItem("theme_colors", JSON.stringify(newColors));
       return { success: true };
     } catch (err) {
       const error = err as Error;
@@ -134,3 +89,4 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     </ThemeContext.Provider>
   );
 };
+

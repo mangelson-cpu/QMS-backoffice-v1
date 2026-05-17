@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { supabase } from "../../../shared/api/supabaseClient";
+import { apiClient } from "../../../shared/api/apiClient";
 import { FiFolder } from "react-icons/fi";
 import type { Service, SousService } from "../../../shared/types";
 
@@ -22,17 +22,8 @@ export const SousServiceModal: React.FC<Props> = ({
   const fetchSousServices = useCallback(async () => {
     setFetchError("");
     try {
-      const { data, error } = await supabase
-        .from("sous_service")
-        .select("*")
-        .eq("service_id", service.id)
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-
-      if (data) {
-        setSousServices(data as SousService[]);
-      }
+      const data = await apiClient.get(`/services/${service.id}/sous-services`);
+      setSousServices(data.sousServices || []);
     } catch (err) {
       const error = err as Error;
       console.error("Erreur fetching sous_services:", error);
@@ -52,12 +43,9 @@ export const SousServiceModal: React.FC<Props> = ({
 
     setLoading(true);
     try {
-      const { error } = await supabase.from("sous_service").insert({
+      await apiClient.post(`/services/${service.id}/sous-services`, {
         nom_sous_service: nomSousService.trim(),
-        service_id: service.id,
       });
-
-      if (error) throw error;
 
       setNomSousService("");
       await fetchSousServices();
@@ -73,12 +61,7 @@ export const SousServiceModal: React.FC<Props> = ({
     if (!confirm("Voulez-vous vraiment supprimer ce sous-service ?")) return;
 
     try {
-      const { error } = await supabase
-        .from("sous_service")
-        .delete()
-        .eq("id", id);
-
-      if (error) throw error;
+      await apiClient.delete(`/services/sous-services/${id}`);
       await fetchSousServices();
       onSousServicesChange();
     } catch (err) {

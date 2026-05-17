@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { supabase } from "../../../shared/api/supabaseClient";
+import { apiClient } from "../../../shared/api/apiClient";
 import { FiUser, FiLogOut } from "react-icons/fi";
 import { FaUser } from 'react-icons/fa';
 
@@ -28,19 +28,20 @@ export const Navbar: React.FC<NavbarProps> = ({ onLogout }) => {
 
   useEffect(() => {
     const fetchUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        const { data } = await supabase
-          .from("users")
-          .select("id, nom_user, email, role, agence_id")
-          .eq("id", user.id)
-          .single();
-        if (data) {
-          setCurrentUser({ ...data, id: user.id });
-          setEditNom(data.nom_user);
-          setEditEmail(data.email);
+      const token = localStorage.getItem("token");
+      if (token) {
+        try {
+          const res = await fetch("http://localhost:3000/api/auth/me", {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setCurrentUser(data.user);
+            setEditNom(data.user.nom_user);
+            setEditEmail(data.user.email);
+          }
+        } catch (err) {
+          console.error("Erreur fetchUser Navbar:", err);
         }
       }
     };
@@ -67,25 +68,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onLogout }) => {
     setMessage("");
 
     try {
-      const { data, error } = await supabase.rpc("update_user_secure", {
-        p_user_id: currentUser.id,
-        p_email: editEmail,
-        p_password: editPassword || null,
-        p_nom_user: editNom,
-        p_role: currentUser.role,
-        p_agence_id: currentUser.agence_id || null,
-        p_old_password: editOldPassword || null,
+      await apiClient.put('/auth/profile', {
+        nom_user: editNom,
+        email: editEmail,
+        old_password: editOldPassword || undefined,
+        new_password: editPassword || undefined,
       });
-
-      if (error) throw error;
-
-      const result = data as { success: boolean; message: string };
-
-      if (!result.success) {
-        setMessage(result.message);
-        setIsSuccess(false);
-        return;
-      }
 
       setMessage("Profil mis à jour avec succès");
       setIsSuccess(true);

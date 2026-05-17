@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { supabase } from "../../../shared/api/supabaseClient";
+import { apiClient } from "../../../shared/api/apiClient";
 import type { Priority, AgencePriority, UserRole } from "../../../shared/types";
 import { useDynamicPageSize } from "../../../shared/hooks/useDynamicPageSize";
 
@@ -33,24 +33,11 @@ export const PriorityAssignment: React.FC<Props> = ({ userRole, currentUserAgenc
     if (!currentUserAgenceId) return;
     setFetchError("");
     try {
-      // Fetch available catalyst
-      const { data: globalData, error: globalError } = await supabase
-        .from("priority")
-        .select("*")
-        .order("valeur", { ascending: true });
+      const globalRes = await apiClient.get("/priorities");
+      const agencyRes = await apiClient.get(`/priorities/agence?agence_id=${currentUserAgenceId}`);
 
-      if (globalError) throw globalError;
-
-      // Fetch current agency settings
-      const { data: agencyData, error: agencyError } = await supabase
-        .from("agence_priority")
-        .select("*")
-        .eq("agence_id", currentUserAgenceId);
-
-      if (agencyError) throw agencyError;
-
-      if (globalData) setGlobalPriorities(globalData as Priority[]);
-      if (agencyData) setAgencyPriorities(agencyData as AgencePriority[]);
+      setGlobalPriorities(globalRes.priorities || []);
+      setAgencyPriorities(agencyRes.agencePriorities || []);
     } catch (err) {
       const error = err as Error;
       setFetchError(error.message || "Erreur lors du chargement des données");
@@ -74,20 +61,17 @@ export const PriorityAssignment: React.FC<Props> = ({ userRole, currentUserAgenc
 
     try {
       if (existing) {
-        const { error } = await supabase
-          .from("agence_priority")
-          .update({ is_active: !existing.is_active })
-          .eq("id", existing.id);
-        if (error) throw error;
+        await apiClient.post('/priorities/agence/toggle', {
+          agence_id: currentUserAgenceId,
+          priority_id: priorityId,
+          is_active: !existing.is_active
+        });
       } else {
-        const { error } = await supabase
-          .from("agence_priority")
-          .insert({
-            agence_id: currentUserAgenceId,
-            priority_id: priorityId,
-            is_active: true
-          });
-        if (error) throw error;
+        await apiClient.post('/priorities/agence/toggle', {
+          agence_id: currentUserAgenceId,
+          priority_id: priorityId,
+          is_active: true
+        });
       }
       await fetchPriorities();
     } catch (err) {

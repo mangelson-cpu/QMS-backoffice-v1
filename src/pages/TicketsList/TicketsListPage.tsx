@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import type { UserRole, Ticket } from "../../shared/types";
 import { AgentTicketManager } from "../../features/ticket/ui/AgentTicketManager/AgentTicketManager";
-import { supabase } from "../../shared/api/supabaseClient";
+import { apiClient } from "../../shared/api/apiClient";
 import { useDynamicPageSize } from "../../shared/hooks/useDynamicPageSize";
 
 interface Props {
@@ -31,74 +31,33 @@ export const TicketsListPage: React.FC<Props> = ({ userRole, currentUserAgenceId
   const fetchTicketsData = useCallback(async () => {
     setLoading(true);
     try {
-      let query = supabase
-        .from("ticket")
-        .select(`
-          *,
-          service(nom_service),
-          sous_service(nom_sous_service),
-          agence(nom)
-        `)
-        .order("created_at", { ascending: false });
+      // Appel au nouveau backend
+      const response = await apiClient.get("/tickets");
+      const ticketsData = response.tickets || [];
 
-      if (userRole === "admin" && currentUserAgenceId) {
-        query = query.eq("agence_id", currentUserAgenceId);
-      }
-
-      const { data: ticketsData, error: ticketsError } = await query;
-      if (ticketsError) throw ticketsError;
-
-      if (!ticketsData || ticketsData.length === 0) {
+      if (ticketsData.length === 0) {
         setTickets([]);
         return;
       }
 
-      const userIds = Array.from(new Set(ticketsData.map(t => t.user_id).filter(Boolean)));
-      let usersMap: Record<string, string> = {};
-      
-      if (userIds.length > 0) {
-        const { data: usersData } = await supabase
-          .from("users")
-          .select("id, nom_user")
-          .in("id", userIds);
-          
-        if (usersData) {
-          usersData.forEach(u => {
-            usersMap[u.id] = u.nom_user;
-          });
-        }
-      }
-
-      const ticketNumeros = Array.from(new Set(ticketsData.map(t => t.numero_ticket).filter(Boolean)));
-      let evalsMap: Record<string, number> = {};
-      
-      if (ticketNumeros.length > 0) {
-        const { data: evalsData } = await supabase
-          .from("evaluations")
-          .select("ticket_numero, score")
-          .in("ticket_numero", ticketNumeros);
-          
-        if (evalsData) {
-          evalsData.forEach(e => {
-            evalsMap[e.ticket_numero] = e.score;
-          });
-        }
-      }
-
-      const mergedTickets: ExtendedTicket[] = ticketsData.map(t => ({
+      // Le backend fournit déjà agence_nom et service_nom
+      // On formate pour que ça match l'interface ExtendedTicket
+      const formattedTickets: ExtendedTicket[] = ticketsData.map((t: any) => ({
         ...t,
-        agent_nom: t.user_id ? usersMap[t.user_id] : undefined,
-        evaluation_score: evalsMap[t.numero_ticket] ?? null
+        service: t.service ? t.service : { nom_service: t.service_nom || "---" },
+        agence: t.agence ? t.agence : { nom: t.agence_nom || "---" },
+        // On pourrait aussi ajouter la filiale pour le super_admin
+        filiale: t.filiale_nom
       }));
 
-      setTickets(mergedTickets);
+      setTickets(formattedTickets);
       setCurrentPage(1);
     } catch (err) {
       console.error("Error fetching admin tickets:", err);
     } finally {
       setLoading(false);
     }
-  }, [userRole, currentUserAgenceId]);
+  }, []);
 
   useEffect(() => {
     if (userRole === "admin" || userRole === "super_admin") {
@@ -215,14 +174,19 @@ export const TicketsListPage: React.FC<Props> = ({ userRole, currentUserAgenceId
                         <tr key={t.id}>
                           <td className="font-bold">{t.numero_ticket}</td>
                           <td>
-                            <div style={{ display: "flex", flexDirection: "column" }}>
-                              <span>{dateString}</span>
-                              <span className="text-secondary text-sm">{timeString}</span>
-                            </div>
+                            <span className="font-medium">{dateString}</span>
+                            <span className="text-secondary text-sm" style={{ marginLeft: "8px" }}>{timeString}</span>
                           </td>
                           <td>{t.service?.nom_service || "---"}</td>
                           <td className="text-secondary">{t.sous_service?.nom_sous_service || "---"}</td>
-                          {userRole === "super_admin" && <td>{t.agence?.nom || "---"}</td>}
+                          {userRole === "super_admin" && (
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span className="font-medium">{t.agence?.nom || "---"}</span>
+                                <span className="text-xs text-secondary">{(t as any).filiale || ""}</span>
+                              </div>
+                            </td>
+                          )}
                           <td>{t.nom_guichet || "---"}</td>
                           <td>{t.agent_nom || "---"}</td>
                           <td>

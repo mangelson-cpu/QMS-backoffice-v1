@@ -1,6 +1,5 @@
 import React from "react";
 import { PriorityManager } from "../../features/priority/ui/PriorityManager";
-import { PriorityAssignment } from "../../features/priority/ui/PriorityAssignment";
 import type { UserRole } from "../../shared/types";
 
 interface Props {
@@ -9,12 +8,8 @@ interface Props {
 }
 
 export const PrioritiesPage: React.FC<Props> = ({ userRole, currentUserAgenceId }) => {
-  if (userRole === "super_admin") {
-    return <PriorityManager userRole={userRole} />;
-  }
-
   return (
-    <PriorityAssignment
+    <PriorityManager
       userRole={userRole}
       currentUserAgenceId={currentUserAgenceId}
     />

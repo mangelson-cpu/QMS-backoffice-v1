@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useDynamicPageSize } from "../../../shared/hooks/useDynamicPageSize";
-import { supabase } from "../../../shared/api/supabaseClient";
-import { FiLock, FiBriefcase } from "react-icons/fi";
+import { FiBriefcase, FiFilter } from "react-icons/fi";
 import type { Agence } from "../../../shared/types";
 
 export const AgenceManager: React.FC = () => {
@@ -11,17 +10,14 @@ export const AgenceManager: React.FC = () => {
 
   const [nom, setNom] = useState("");
   const [adresse, setAdresse] = useState("");
+  const [modalFilialeId, setModalFilialeId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
   
-  // Kiosk Security Modal State
-  const [showSecurityModal, setShowSecurityModal] = useState(false);
-  const [securityAgence, setSecurityAgence] = useState<Agence | null>(null);
-  const [kioskPassword, setKioskPassword] = useState("");
-  const [securityLoading, setSecurityLoading] = useState(false);
-  const [securityMessage, setSecurityMessage] = useState("");
-  const [securityIsSuccess, setSecurityIsSuccess] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [filiales, setFiliales] = useState<any[]>([]);
+  const [selectedFilialeId, setSelectedFilialeId] = useState<string>("");
 
   const [currentPage, setCurrentPage] = useState(1);
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -30,30 +26,88 @@ export const AgenceManager: React.FC = () => {
     agences.length,
   );
 
-  const fetchAgences = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from("agence")
-        .select("*")
-        .order("created_at", { ascending: false });
+  useEffect(() => {
+    // 1. Récupérer l'utilisateur pour connaître son rôle
+    const initData = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) return;
 
-      if (error) throw error;
-      if (data) {
-        setAgences(data as Agence[]);
+      try {
+        const resUser = await fetch("http://localhost:3000/api/auth/me", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (resUser.ok) {
+          const { user } = await resUser.json();
+          setCurrentUser(user);
+
+          // Si super_admin, récupérer les filiales
+          if (user.role === "super_admin") {
+            const resFiliales = await fetch("http://localhost:3000/api/filiales", {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            if (resFiliales.ok) {
+              const { filiales } = await resFiliales.json();
+              setFiliales(filiales);
+              if (filiales.length > 0) {
+                setSelectedFilialeId(filiales[0].id);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Erreur initData:", err);
+      }
+    };
+    initData();
+  }, []);
+
+  const fetchAgences = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    // Si on est super admin et qu'aucune filiale n'est sélectionnée, on ne fetch pas
+    if (currentUser?.role === 'super_admin' && !selectedFilialeId) return;
+
+    try {
+      const headers: any = { Authorization: `Bearer ${token}` };
+      if (currentUser?.role === 'super_admin') {
+        headers['x-filiale-id'] = selectedFilialeId;
+      }
+
+      const res = await fetch("http://localhost:3000/api/agences", { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setAgences(data.agences || []);
         setCurrentPage(1);
+      } else {
+        const data = await res.json();
+        console.error("Erreur API Agences:", data.error);
+        setAgences([]);
       }
     } catch (err) {
       console.error("Erreur fetchAgences:", err);
     }
-  }, []);
+  }, [currentUser, selectedFilialeId]);
 
   useEffect(() => {
-    fetchAgences();
-  }, [fetchAgences]);
+    if (currentUser) {
+      fetchAgences();
+    }
+  }, [fetchAgences, currentUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nom.trim()) return;
+
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    const targetFilialeId = currentUser?.role === 'super_admin' ? modalFilialeId : selectedFilialeId;
+    if (currentUser?.role === 'super_admin' && !targetFilialeId) {
+      setMessage("Veuillez sélectionner une filiale");
+      setIsSuccess(false);
+      return;
+    }
 
     setLoading(true);
     setMessage("");
@@ -64,27 +118,37 @@ export const AgenceManager: React.FC = () => {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/(^-|-$)+/g, "");
+      
       const payload = {
         nom: nom.trim(),
         adresse: adresse.trim() || null,
         slug: slugContent,
       };
 
-      if (editingAgence) {
-        const { error } = await supabase
-          .from("agence")
-          .update(payload)
-          .eq("id", editingAgence.id);
-
-        if (error) throw error;
-        setMessage("Agence modifiée avec succès");
-      } else {
-        const { error } = await supabase.from("agence").insert(payload);
-
-        if (error) throw error;
-        setMessage("Agence créée avec succès");
+      const headers: any = { 
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}` 
+      };
+      if (currentUser?.role === 'super_admin') {
+        headers['x-filiale-id'] = targetFilialeId;
       }
 
+      const url = editingAgence 
+        ? `http://localhost:3000/api/agences/${editingAgence.id}`
+        : "http://localhost:3000/api/agences";
+      
+      const method = editingAgence ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers,
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur serveur");
+
+      setMessage(editingAgence ? "Agence modifiée avec succès" : "Agence créée avec succès");
       setIsSuccess(true);
 
       setTimeout(() => {
@@ -94,10 +158,9 @@ export const AgenceManager: React.FC = () => {
       }, 1000);
 
       await fetchAgences();
-    } catch (err) {
-      const error = err as Error;
-      console.error("Erreur handleSubmit:", error);
-      setMessage(error.message || "Erreur lors de l'opération");
+    } catch (err: any) {
+      console.error("Erreur handleSubmit:", err);
+      setMessage(err.message || "Erreur lors de l'opération");
       setIsSuccess(false);
     } finally {
       setLoading(false);
@@ -107,14 +170,29 @@ export const AgenceManager: React.FC = () => {
   const handleDelete = async (id: string) => {
     if (!confirm("Êtes-vous sûr de vouloir supprimer cette agence ?")) return;
 
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
     try {
-      const { error } = await supabase.from("agence").delete().eq("id", id);
-      if (error) throw error;
+      const headers: any = { Authorization: `Bearer ${token}` };
+      if (currentUser?.role === 'super_admin') {
+        headers['x-filiale-id'] = selectedFilialeId;
+      }
+
+      const res = await fetch(`http://localhost:3000/api/agences/${id}`, {
+        method: "DELETE",
+        headers
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Erreur serveur");
+      }
+
       await fetchAgences();
-    } catch (err) {
-      const error = err as Error;
-      console.error("Erreur handleDelete:", error);
-      alert(error.message || "Erreur lors de la suppression");
+    } catch (err: any) {
+      console.error("Erreur handleDelete:", err);
+      alert(err.message || "Erreur lors de la suppression");
     }
   };
 
@@ -127,70 +205,49 @@ export const AgenceManager: React.FC = () => {
 
   const openCreateModal = () => {
     resetForm();
+    // Pré-remplir avec la filiale filtrée si elle est déjà sélectionnée
+    if (selectedFilialeId) setModalFilialeId(selectedFilialeId);
     setShowModal(true);
   };
 
   const resetForm = () => {
     setNom("");
     setAdresse("");
+    setModalFilialeId("");
     setEditingAgence(null);
     setMessage("");
     setIsSuccess(false);
   };
 
-  const openSecurityModal = (agence: Agence) => {
-    setSecurityAgence(agence);
-    setKioskPassword("");
-    setSecurityMessage("");
-    setShowSecurityModal(true);
-  };
-
-  const handleSecuritySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!securityAgence) return;
-
-    setSecurityLoading(true);
-    setSecurityMessage("");
-
-    try {
-      const { error } = await supabase.rpc("update_kiosk_password", {
-        p_password: kioskPassword,
-        p_agence_id: securityAgence.id,
-      });
-
-      if (error) throw error;
-
-      setSecurityMessage(
-        kioskPassword
-          ? "Mot de passe de la borne mis à jour !"
-          : "Mot de passe supprimé (borne déverrouillée)."
-      );
-      setSecurityIsSuccess(true);
-      setKioskPassword("");
-      
-      setTimeout(() => {
-        setShowSecurityModal(false);
-        setSecurityMessage("");
-      }, 2000);
-    } catch (err: any) {
-      console.error(err);
-      setSecurityMessage(err.message || "Erreur lors de la mise à jour.");
-      setSecurityIsSuccess(false);
-    } finally {
-      setSecurityLoading(false);
-    }
-  };
-
   return (
     <div className="agences-page">
-      <header className="page-header">
+      <header className="page-header" style={{ alignItems: "flex-start" }}>
         <div className="header-text">
           <h1>Gestion des agences</h1>
           <p>Gérez les agences de votre organisation</p>
         </div>
-        <button className="primary-gradient-btn" onClick={openCreateModal}>
-          + Créer une agence
-        </button>
+
+        <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+          {currentUser?.role === "super_admin" && (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "white", padding: "0.5rem 1rem", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+              <FiFilter color="var(--primary-color)" />
+              <select 
+                value={selectedFilialeId} 
+                onChange={(e) => setSelectedFilialeId(e.target.value)}
+                style={{ border: "none", outline: "none", background: "transparent", fontWeight: "bold", color: "var(--text-color)" }}
+              >
+                <option value="">Toutes les filiales</option>
+                {filiales.map(f => (
+                  <option key={f.id} value={f.id}>{f.nom}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button className="primary-gradient-btn" onClick={openCreateModal}>
+            + Créer une agence
+          </button>
+        </div>
       </header>
 
       {showModal && (
@@ -218,6 +275,23 @@ export const AgenceManager: React.FC = () => {
             </div>
 
             <form className="auth-form" onSubmit={handleSubmit}>
+              {currentUser?.role === "super_admin" && (
+                <div className="auth-input-group">
+                  <label className="auth-input-label">Filiale</label>
+                  <select
+                    className="auth-select"
+                    value={modalFilialeId}
+                    onChange={(e) => setModalFilialeId(e.target.value)}
+                    required
+                    style={{ width: "100%" }}
+                  >
+                    <option value="">Sélectionner une filiale</option>
+                    {filiales.map(f => (
+                      <option key={f.id} value={f.id}>{f.nom}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="auth-input-group">
                 <label className="auth-input-label">Nom de l'agence</label>
                 <input
@@ -261,55 +335,6 @@ export const AgenceManager: React.FC = () => {
         </div>
       )}
 
-      {showSecurityModal && securityAgence && (
-        <div
-          className="modal-overlay"
-          onClick={() => !securityLoading && setShowSecurityModal(false)}
-        >
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button
-              className="modal-close-btn"
-              onClick={() => setShowSecurityModal(false)}
-            >
-              ×
-            </button>
-            <div className="auth-card-header" style={{ marginBottom: "2rem" }}>
-              <div className="auth-card-icon" style={{ background: "linear-gradient(135deg, var(--primary-color), var(--secondary-color))", color: "white" }}>
-                <FiLock size={24} />
-              </div>
-              <h2 className="auth-card-title">Sécurité Borne</h2>
-              <p className="auth-card-subtitle">
-                Gérer le verrouillage de l'agence <strong>{securityAgence.nom}</strong>
-              </p>
-            </div>
-
-            <form className="auth-form" onSubmit={handleSecuritySubmit}>
-              <div className="auth-input-group">
-                <label className="auth-input-label">Nouveau mot de passe de la borne</label>
-                <input
-                  className="auth-input"
-                  type="password"
-                  value={kioskPassword}
-                  onChange={(e) => setKioskPassword(e.target.value)}
-                  placeholder="Laisser vide pour désactiver"
-                />
-              </div>
-              <button type="submit" className="auth-button" disabled={securityLoading}>
-                {securityLoading ? "Enregistrement..." : "Appliquer la sécurité"}
-              </button>
-              {securityMessage && (
-                <div
-                  className={`auth-message ${securityIsSuccess ? "auth-message--success" : "auth-message--error"}`}
-                  style={{ marginTop: "1rem" }}
-                >
-                  {securityMessage}
-                </div>
-              )}
-            </form>
-          </div>
-        </div>
-      )}
-
       <div className="content-card" ref={tableContainerRef}>
         <table className="premium-table">
           <thead>
@@ -329,7 +354,7 @@ export const AgenceManager: React.FC = () => {
                   (currentPage - 1) * itemsPerPage,
                   currentPage * itemsPerPage,
                 )
-                .map((agence) => (
+                .map((agence: any) => (
                   <tr key={agence.id}>
                     <td className="font-bold">{agence.nom}</td>
                     <td className="text-secondary">
@@ -360,44 +385,6 @@ export const AgenceManager: React.FC = () => {
                           >
                             /{agence.slug}/screen
                           </a>
-                          <button
-                            className="icon-btn"
-                            style={{
-                              padding: "0.25rem",
-                              color: "var(--text-secondary)",
-                            }}
-                            title="Copier le lien de l'écran"
-                            onClick={() => {
-                              const fullUrl = `${window.location.origin}/${agence.slug}/screen`;
-                              navigator.clipboard.writeText(fullUrl);
-                              setMessage(
-                                `Lien de l'écran pour ${agence.nom} copié !`,
-                              );
-                              setIsSuccess(true);
-                              setTimeout(() => setMessage(""), 3000);
-                            }}
-                          >
-                            <svg
-                              viewBox="0 0 24 24"
-                              width="14"
-                              height="14"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <rect
-                                x="9"
-                                y="9"
-                                width="13"
-                                height="13"
-                                rx="2"
-                                ry="2"
-                              />
-                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                            </svg>
-                          </button>
                         </div>
                       ) : (
                         <span className="text-secondary text-sm">
@@ -430,44 +417,6 @@ export const AgenceManager: React.FC = () => {
                           >
                             /{agence.slug}/borne
                           </a>
-                          <button
-                            className="icon-btn"
-                            style={{
-                              padding: "0.25rem",
-                              color: "var(--text-secondary)",
-                            }}
-                            title="Copier le lien de la borne"
-                            onClick={() => {
-                              const fullUrl = `${window.location.origin}/${agence.slug}/borne`;
-                              navigator.clipboard.writeText(fullUrl);
-                              setMessage(
-                                `Lien de la borne pour ${agence.nom} copié !`,
-                              );
-                              setIsSuccess(true);
-                              setTimeout(() => setMessage(""), 3000);
-                            }}
-                          >
-                            <svg
-                              viewBox="0 0 24 24"
-                              width="14"
-                              height="14"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <rect
-                                x="9"
-                                y="9"
-                                width="13"
-                                height="13"
-                                rx="2"
-                                ry="2"
-                              />
-                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                            </svg>
-                          </button>
                         </div>
                       ) : (
                         <span className="text-secondary text-sm">
@@ -488,14 +437,6 @@ export const AgenceManager: React.FC = () => {
                         : "---"}
                     </td>
                     <td style={{ textAlign: "right" }}>
-                      <button
-                        className="icon-btn"
-                        style={{ color: "var(--primary-color)" }}
-                        onClick={() => openSecurityModal(agence)}
-                        title="Configurer la sécurité de la borne"
-                      >
-                        <FiLock size={18} />
-                      </button>
                       <button
                         className="icon-btn edit"
                         onClick={() => openEditModal(agence)}
@@ -545,7 +486,9 @@ export const AgenceManager: React.FC = () => {
                     color: "var(--text-secondary)",
                   }}
                 >
-                  Aucune agence trouvée.
+                  {currentUser?.role === 'super_admin' && !selectedFilialeId 
+                    ? "Veuillez sélectionner une filiale pour voir ses agences." 
+                    : "Aucune agence trouvée dans cette filiale."}
                 </td>
               </tr>
             )}

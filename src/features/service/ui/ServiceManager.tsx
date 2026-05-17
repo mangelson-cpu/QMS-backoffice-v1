@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useDynamicPageSize } from "../../../shared/hooks/useDynamicPageSize";
-import { supabase } from "../../../shared/api/supabaseClient";
-import { FiTool } from "react-icons/fi";
+import { apiClient, setSelectedFiliale, getSelectedFiliale } from "../../../shared/api/apiClient";
+import { FiTool, FiFilter } from "react-icons/fi";
 import type { Service, UserRole } from "../../../shared/types";
 import { SousServiceModal } from "./SousServiceModal";
 
@@ -17,6 +17,7 @@ export const ServiceManager: React.FC<Props> = ({ userRole }) => {
     useState<Service | null>(null);
 
   const [nomService, setNomService] = useState("");
+  const [modalFilialeId, setModalFilialeId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
@@ -30,25 +31,40 @@ export const ServiceManager: React.FC<Props> = ({ userRole }) => {
 
   const isSuperAdmin = userRole === "super_admin";
 
+  const [filiales, setFiliales] = useState<any[]>([]);
+  const [selectedFilialeId, setSelectedFilialeIdState] = useState<string>(getSelectedFiliale() || "");
+
+  // Charger les filiales au montage (super_admin)
+  useEffect(() => {
+    if (isSuperAdmin) {
+      const load = async () => {
+        try {
+          const data = await apiClient.get('/filiales');
+          setFiliales(data.filiales || []);
+          if (!selectedFilialeId && data.filiales?.length > 0) {
+            const firstId = data.filiales[0].id;
+            setSelectedFilialeIdState(firstId);
+            setSelectedFiliale(firstId);
+          }
+        } catch (err) { console.error('Erreur filiales:', err); }
+      };
+      load();
+    }
+  }, [isSuperAdmin]);
+
+  const handleFilialeChange = (id: string) => {
+    setSelectedFilialeIdState(id);
+    setSelectedFiliale(id);
+  };
+
   const fetchServices = useCallback(async (ignore: boolean = false) => {
-    console.log("ServiceManager: Début du fetchServices");
+    if (isSuperAdmin && !selectedFilialeId) return;
     setFetchError("");
     try {
-      const { data, error } = await supabase
-        .from("service")
-        .select("*, sous_service(*)")
-        .order("created_at", { ascending: false });
-
-      console.log("ServiceManager: Réponse reçue", { data, error });
-
-      if (error) throw error;
-
+      const data = await apiClient.get("/services");
       if (ignore) return;
-
-      if (data) {
-        setServices(data as Service[]);
-        setCurrentPage(1);
-      }
+      setServices(data.services || []);
+      setCurrentPage(1);
     } catch (err) {
       if (ignore) return;
       const error = err as Error;
@@ -56,36 +72,12 @@ export const ServiceManager: React.FC<Props> = ({ userRole }) => {
       setFetchError(error.message || "Impossible de charger les services");
       setServices([]);
     }
-  }, []);
+  }, [selectedFilialeId, isSuperAdmin]);
 
   useEffect(() => {
     let ignore = false;
-
-    const loadServices = async () => {
-      await fetchServices(ignore);
-    };
-
-    loadServices();
-
-    const channel = supabase
-      .channel("sous_service_changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "sous_service",
-        },
-        () => {
-          fetchServices(ignore);
-        },
-      )
-      .subscribe();
-
-    return () => {
-      ignore = true;
-      supabase.removeChannel(channel);
-    };
+    fetchServices(ignore);
+    return () => { ignore = true; };
   }, [fetchServices]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -95,21 +87,17 @@ export const ServiceManager: React.FC<Props> = ({ userRole }) => {
     setLoading(true);
     setMessage("");
 
+    // Appliquer la filiale du formulaire avant l'appel
+    if (isSuperAdmin && modalFilialeId) {
+      setSelectedFiliale(modalFilialeId);
+    }
+
     try {
       if (editingService) {
-        const { error } = await supabase
-          .from("service")
-          .update({ nom_service: nomService.trim() })
-          .eq("id", editingService.id);
-
-        if (error) throw error;
+        await apiClient.put(`/services/${editingService.id}`, { nom_service: nomService.trim() });
         setMessage("Service modifié avec succès");
       } else {
-        const { error } = await supabase
-          .from("service")
-          .insert({ nom_service: nomService.trim() });
-
-        if (error) throw error;
+        await apiClient.post("/services", { nom_service: nomService.trim() });
         setMessage("Service créé avec succès");
       }
 
@@ -136,8 +124,7 @@ export const ServiceManager: React.FC<Props> = ({ userRole }) => {
     if (!confirm("Êtes-vous sûr de vouloir supprimer ce service ?")) return;
 
     try {
-      const { error } = await supabase.from("service").delete().eq("id", id);
-      if (error) throw error;
+      await apiClient.delete(`/services/${id}`);
       await fetchServices();
     } catch (err) {
       const error = err as Error;
@@ -149,17 +136,20 @@ export const ServiceManager: React.FC<Props> = ({ userRole }) => {
   const openEditModal = (service: Service) => {
     setEditingService(service);
     setNomService(service.nom_service);
+    if (selectedFilialeId) setModalFilialeId(selectedFilialeId);
     setShowModal(true);
   };
 
   const openCreateModal = () => {
     resetForm();
+    if (selectedFilialeId) setModalFilialeId(selectedFilialeId);
     setShowModal(true);
   };
 
   const resetForm = () => {
     setNomService("");
     setEditingService(null);
+    setModalFilialeId("");
     setMessage("");
     setIsSuccess(false);
   };
@@ -169,13 +159,30 @@ export const ServiceManager: React.FC<Props> = ({ userRole }) => {
       <header className="page-header">
         <div className="header-text">
           <h1>Gestion des services</h1>
-          <p>Gérez les services de votre agence</p>
+          <p>Gérez les services de votre organisation</p>
         </div>
-        {isSuperAdmin && (
-          <button className="primary-gradient-btn" onClick={openCreateModal}>
-            + Créer un service
-          </button>
-        )}
+        <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+          {isSuperAdmin && (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "white", padding: "0.5rem 1rem", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+              <FiFilter color="var(--primary-color)" />
+              <select
+                value={selectedFilialeId}
+                onChange={(e) => handleFilialeChange(e.target.value)}
+                style={{ border: "none", outline: "none", background: "transparent", fontWeight: "bold", color: "var(--text-color)" }}
+              >
+                <option value="">Sélectionner une filiale</option>
+                {filiales.map(f => (
+                  <option key={f.id} value={f.id}>{f.nom}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {isSuperAdmin && (
+            <button className="primary-gradient-btn" onClick={openCreateModal}>
+              + Créer un service
+            </button>
+          )}
+        </div>
       </header>
 
       {showModal && (
@@ -203,6 +210,23 @@ export const ServiceManager: React.FC<Props> = ({ userRole }) => {
             </div>
 
             <form className="auth-form" onSubmit={handleSubmit}>
+              {isSuperAdmin && (
+                <div className="auth-input-group">
+                  <label className="auth-input-label">Filiale</label>
+                  <select
+                    className="auth-select"
+                    value={modalFilialeId}
+                    onChange={(e) => setModalFilialeId(e.target.value)}
+                    required
+                    style={{ width: "100%" }}
+                  >
+                    <option value="">Sélectionner une filiale</option>
+                    {filiales.map(f => (
+                      <option key={f.id} value={f.id}>{f.nom}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="auth-input-group">
                 <label className="auth-input-label">Nom du service</label>
                 <input

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useDynamicPageSize } from "../../../shared/hooks/useDynamicPageSize";
-import { supabase } from "../../../shared/api/supabaseClient";
+import { apiClient } from "../../../shared/api/apiClient";
 import type {
   Service,
   Guichet,
@@ -43,76 +43,22 @@ export const GuichetAssignment: React.FC<Props> = ({
 
   const fetchData = useCallback(
     async (ignore: boolean = false) => {
-      console.log(
-        "GuichetAssignment: fetchData called with agencyId:",
-        currentUserAgenceId,
-      );
       setFetchError("");
-      if (!currentUserAgenceId) {
-        console.warn(
-          "GuichetAssignment: No agencyId provided, skipping fetch.",
-        );
-        return;
-      }
+      if (!currentUserAgenceId) return;
 
       try {
-        console.log("GuichetAssignment: Appel de la table 'service'");
-        const { data: servicesData, error: servicesError } = await supabase
-          .from("service")
-          .select("*")
-          .order("nom_service");
+        const [servicesRes, assignRes, guichetRes] = await Promise.all([
+            apiClient.get('/services'),
+            apiClient.get(`/guichets/services?agence_id=${currentUserAgenceId}`),
+            apiClient.get(`/guichets?agence_id=${currentUserAgenceId}`)
+        ]);
 
-        console.log(
-          "GuichetAssignment: Réponse 'service'",
-          servicesData ? `${servicesData.length} reçus` : "Non défini",
-        );
-        if (servicesError) throw servicesError;
+        if (ignore) return;
 
-        console.log("GuichetAssignment: Appel de la table 'guichet_service'");
-        const { data: assignmentsData, error: assignmentsError } =
-          await supabase
-            .from("guichet_service")
-            .select(
-              `
-                  *,
-                  service:service_id(id, nom_service),
-                  agence:agence_id(id, nom)
-                `,
-            )
-            .eq("agence_id", currentUserAgenceId);
-
-        console.log(
-          "GuichetAssignment: Réponse 'guichet_service'",
-          assignmentsData ? `${assignmentsData.length} reçus` : "Non défini",
-        );
-        if (assignmentsError) throw assignmentsError;
-
-        console.log(
-          "GuichetAssignment: Appel de la table 'guichet' pour appellations",
-        );
-        const { data: guichetData, error: guichetError } = await supabase
-          .from("guichet")
-          .select("*")
-          .eq("agence_id", currentUserAgenceId);
-
-        if (guichetError) {
-          console.warn(
-            "Erreur fetch guichet, peut-être table inexistante?",
-            guichetError,
-          );
-        }
-
-        if (ignore) {
-          console.log(
-            "GuichetAssignment: Requête ignorée car le composant a été démonté.",
-          );
-          return;
-        }
-
-        if (servicesData) setServices(servicesData);
-        if (assignmentsData) setAssignments(assignmentsData as GuichetService[]);
-        if (guichetData) {
-          const typedGuichets = guichetData as Guichet[];
+        if (servicesRes.services) setServices(servicesRes.services);
+        if (assignRes.guichetServices) setAssignments(assignRes.guichetServices as GuichetService[]);
+        if (guichetRes.guichets) {
+          const typedGuichets = guichetRes.guichets as Guichet[];
           setGuichets(typedGuichets);
           if (typedGuichets.length > 0 && !selectedGuichet) {
             setSelectedGuichet(typedGuichets[0].nom_guichet);
@@ -121,10 +67,7 @@ export const GuichetAssignment: React.FC<Props> = ({
       } catch (err) {
         if (ignore) return;
         const error = err as Error;
-        console.error("Erreur fetchData:", error);
         setFetchError(error.message || "Impossible de charger les données");
-        setServices([]);
-        setAssignments([]);
       } finally {
         if (!ignore) setLoading(false);
       }
@@ -134,16 +77,8 @@ export const GuichetAssignment: React.FC<Props> = ({
 
   useEffect(() => {
     let ignore = false;
-
-    const loadData = async () => {
-      await fetchData(ignore);
-    };
-
-    loadData();
-
-    return () => {
-      ignore = true;
-    };
+    fetchData(ignore);
+    return () => { ignore = true; };
   }, [fetchData]);
 
   useEffect(() => {
@@ -154,7 +89,7 @@ export const GuichetAssignment: React.FC<Props> = ({
 
       setLocalSelectedServices(alreadyAssigned);
     }
-  }, [selectedGuichet, showModal, assignments, guichets]);
+  }, [selectedGuichet, showModal, assignments]);
 
   const handleToggleLocalService = (serviceId: string) => {
     setLocalSelectedServices((prev) =>
@@ -166,32 +101,15 @@ export const GuichetAssignment: React.FC<Props> = ({
 
   const handleSave = async () => {
     if (!currentUserAgenceId) return;
-
     setLoading(true);
     setMessage("");
 
     try {
-      const { error: deleteError } = await supabase
-        .from("guichet_service")
-        .delete()
-        .eq("nom_guichet", selectedGuichet)
-        .eq("agence_id", currentUserAgenceId);
-
-      if (deleteError) throw deleteError;
-
-      if (localSelectedServices.length > 0) {
-        const newAssignments = localSelectedServices.map((serviceId) => ({
-          nom_guichet: selectedGuichet,
-          service_id: serviceId,
-          agence_id: currentUserAgenceId,
-        }));
-
-        const { error: insertError } = await supabase
-          .from("guichet_service")
-          .insert(newAssignments);
-
-        if (insertError) throw insertError;
-      }
+      await apiClient.post('/guichets/services', {
+        nom_guichet: selectedGuichet,
+        agence_id: currentUserAgenceId,
+        service_ids: localSelectedServices
+      });
 
       await fetchData();
       setIsSuccess(true);
@@ -229,38 +147,20 @@ export const GuichetAssignment: React.FC<Props> = ({
 
   const handleDeleteAllForGuichet = async (nomGuichet: string) => {
     if (!currentUserAgenceId) return;
-    if (
-      !confirm(
-        `Êtes-vous sûr de vouloir supprimer toutes les affectations pour le ${nomGuichet} ?`,
-      )
-    )
-      return;
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer toutes les affectations pour le ${nomGuichet} ?`)) return;
 
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from("guichet_service")
-        .delete()
-        .eq("nom_guichet", nomGuichet)
-        .eq("agence_id", currentUserAgenceId);
-
-      if (error) throw error;
+      await apiClient.delete(`/guichets/services?nom_guichet=${encodeURIComponent(nomGuichet)}&agence_id=${currentUserAgenceId}`);
       await fetchData();
     } catch (err) {
-      const error = err as Error;
-      alert(error.message || "Erreur lors de la suppression");
+      alert((err as Error).message);
     } finally {
       setLoading(false);
     }
   };
 
-  if (userRole !== "admin") {
-    return (
-      <div className="auth-permission-denied">
-        Accès réservé aux administrateurs d'agence.
-      </div>
-    );
-  }
+  if (userRole !== "admin") return null;
 
   return (
     <div className="services-page">
@@ -276,9 +176,7 @@ export const GuichetAssignment: React.FC<Props> = ({
               setSelectedGuichet(guichets[0].nom_guichet);
               setShowModal(true);
             } else {
-              alert(
-                "Veuillez d'abord configurer des guichets dans la page 'Gestion des Guichets'.",
-              );
+              alert("Veuillez d'abord configurer des guichets.");
             }
           }}
         >
@@ -287,23 +185,12 @@ export const GuichetAssignment: React.FC<Props> = ({
       </header>
 
       {showModal && (
-        <div
-          className="modal-overlay"
-          onClick={() => !loading && setShowModal(false)}
-        >
+        <div className="modal-overlay" onClick={() => !loading && setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button
-              className="modal-close-btn"
-              onClick={() => setShowModal(false)}
-            >
-              ×
-            </button>
+            <button className="modal-close-btn" onClick={() => setShowModal(false)}>×</button>
             <div className="auth-card-header" style={{ marginBottom: "2rem" }}>
               <div className="auth-card-icon"><FiTool style={{ color: 'var(--primary-color)' }} /></div>
               <h2 className="auth-card-title">Affectation de Services</h2>
-              <p className="auth-card-subtitle">
-                Choisissez un guichet et cochez ses services
-              </p>
             </div>
 
             <div className="auth-form">
@@ -318,23 +205,17 @@ export const GuichetAssignment: React.FC<Props> = ({
                 >
                   {guichets.map((g) => (
                     <option key={g.id} value={g.nom_guichet}>
-                      {g.nom_guichet}{" "}
-                      {g.appellation ? `(${g.appellation})` : ""}
+                      {g.nom_guichet} {g.appellation ? `(${g.appellation})` : ""}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div className="services-checklist-container">
-                <label className="auth-input-label">
-                  Checklist des Services
-                </label>
+                <label className="auth-input-label">Checklist des Services</label>
                 <div className="checklist-grid-modal">
                   {services.map((service) => (
-                    <label
-                      key={service.id}
-                      className={`checklist-item-compact ${localSelectedServices.includes(service.id) ? "checked" : ""}`}
-                    >
+                    <label key={service.id} className={`checklist-item-compact ${localSelectedServices.includes(service.id) ? "checked" : ""}`}>
                       <input
                         type="checkbox"
                         checked={localSelectedServices.includes(service.id)}
@@ -342,46 +223,19 @@ export const GuichetAssignment: React.FC<Props> = ({
                         disabled={loading}
                       />
                       <span className="checkbox-custom"></span>
-                      <span className="service-name">
-                        {service.nom_service}
-                      </span>
+                      <span className="service-name">{service.nom_service}</span>
                     </label>
                   ))}
                 </div>
-                {services.length === 0 && (
-                  <div className="empty-state-small">
-                    Aucun service défini par le Super Admin.
-                  </div>
-                )}
               </div>
 
-              {message && (
-                <div
-                  className={`auth-message ${isSuccess ? "auth-message--success" : "auth-message--error"}`}
-                  style={{ marginTop: "1rem" }}
-                >
-                  {message}
-                </div>
-              )}
+              {message && <div className={`auth-message ${isSuccess ? "auth-message--success" : "auth-message--error"}`}>{message}</div>}
 
-              <div
-                className="modal-actions"
-                style={{ marginTop: "2rem", display: "flex", gap: "1rem" }}
-              >
-                <button
-                  className="auth-button"
-                  style={{ flex: 1 }}
-                  onClick={handleSave}
-                  disabled={loading}
-                >
-                  {loading ? "Enregistrement..." : "Enregistrer"}
+              <div className="modal-actions" style={{ marginTop: "2rem", display: "flex", gap: "1rem" }}>
+                <button className="auth-button" onClick={handleSave} disabled={loading} style={{ flex: 1 }}>
+                  Enregistrer
                 </button>
-                <button
-                  className="auth-button secondary"
-                  style={{ flex: 1, background: "#f1f5f9", color: "#64748b" }}
-                  onClick={() => setShowModal(false)}
-                  disabled={loading}
-                >
+                <button className="auth-button secondary" onClick={() => setShowModal(false)} disabled={loading} style={{ flex: 1 }}>
                   Annuler
                 </button>
               </div>
@@ -391,19 +245,6 @@ export const GuichetAssignment: React.FC<Props> = ({
       )}
 
       <div className="content-card" ref={tableContainerRef}>
-        {fetchError && (
-          <div
-            className="auth-message auth-message--error"
-            style={{
-              marginBottom: "1rem",
-              textAlign: "left",
-              fontWeight: "bold",
-            }}
-          >
-            Erreur de chargement ({new Date().toLocaleTimeString()}) :{" "}
-            {fetchError}
-          </div>
-        )}
         <table className="premium-table">
           <thead>
             <tr>
@@ -414,112 +255,38 @@ export const GuichetAssignment: React.FC<Props> = ({
             </tr>
           </thead>
           <tbody>
-            {groupedAssignments.length > 0 &&
-              groupedAssignments
-                .slice(
-                  (currentPage - 1) * itemsPerPage,
-                  currentPage * itemsPerPage,
-                )
-                .map((group) => (
-                  <tr key={group.nom_guichet}>
-                    <td className="font-bold">
-                      {group.nom_guichet}{" "}
-                      {group.appellation ? `(${group.appellation})` : ""}
-                    </td>
-                    <td className="text-secondary">{group.agence_nom}</td>
-                    <td>
-                      <div className="service-tags-container">
-                        {group.services.map((s) => (
-                          <span key={s} className="status-badge user">
-                            {s}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <button
-                        className="icon-btn edit"
-                        onClick={() => {
-                          setSelectedGuichet(group.nom_guichet);
-                          setShowModal(true);
-                        }}
-                        title="Modifier les services"
-                        disabled={loading}
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          width="18"
-                          height="18"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                      </button>
-                      <button
-                        className="icon-btn delete"
-                        onClick={() =>
-                          handleDeleteAllForGuichet(group.nom_guichet)
-                        }
-                        title="Supprimer toutes les affectations"
-                        disabled={loading}
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          width="18"
-                          height="18"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          <line x1="10" y1="11" x2="10" y2="17" />
-                          <line x1="14" y1="11" x2="14" y2="17" />
-                        </svg>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+            {groupedAssignments
+              .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+              .map((group) => (
+                <tr key={group.nom_guichet}>
+                  <td className="font-bold">{group.nom_guichet} {group.appellation ? `(${group.appellation})` : ""}</td>
+                  <td className="text-secondary">{group.agence_nom}</td>
+                  <td>
+                    <div className="service-tags-container">
+                      {group.services.map((s) => <span key={s} className="status-badge user">{s}</span>)}
+                    </div>
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    <button className="icon-btn edit" onClick={() => { setSelectedGuichet(group.nom_guichet); setShowModal(true); }} title="Modifier">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                    <button className="icon-btn delete" onClick={() => handleDeleteAllForGuichet(group.nom_guichet)} title="Supprimer">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" />
+                      </svg>
+                    </button>
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
         {needsPagination && (
           <div className="pagination-controls">
-            <button
-              className="pagination-btn"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => p - 1)}
-            >
-              ←
-            </button>
-            {Array.from(
-              { length: Math.ceil(groupedAssignments.length / itemsPerPage) },
-              (_, i) => i + 1,
-            ).map((page) => (
-              <button
-                key={page}
-                className={`pagination-btn ${currentPage === page ? "active" : ""}`}
-                onClick={() => setCurrentPage(page)}
-              >
-                {page}
-              </button>
-            ))}
-            <button
-              className="pagination-btn"
-              disabled={
-                currentPage ===
-                Math.ceil(groupedAssignments.length / itemsPerPage)
-              }
-              onClick={() => setCurrentPage((p) => p + 1)}
-            >
-              →
-            </button>
-            <span className="pagination-info">
-              {groupedAssignments.length} guichet
-              {groupedAssignments.length > 1 ? "s" : ""}
-            </span>
+            <button className="pagination-btn" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}>←</button>
+            <button className="pagination-btn active">{currentPage}</button>
+            <button className="pagination-btn" disabled={currentPage >= Math.ceil(groupedAssignments.length / itemsPerPage)} onClick={() => setCurrentPage(p => p + 1)}>→</button>
           </div>
         )}
       </div>

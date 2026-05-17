@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { supabase } from "../../../shared/api/supabaseClient";
 import { FiLock } from "react-icons/fi";
 
 import type { UserRole } from "../../../shared/types";
@@ -22,66 +21,26 @@ export const LoginForm: React.FC<Props> = ({ onLogin }) => {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const response = await fetch('http://localhost:3000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
       });
 
-      if (error) {
-        throw new Error(
-          error.message === "Invalid login credentials"
-            ? "Email ou mot de passe incorrect"
-            : error.message,
-        );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Email ou mot de passe incorrect");
       }
 
-      const fetchProfile = async (
-        userId: string,
-        retries = 5,
-      ): Promise<{ role: string | null; error: unknown }> => {
-        let lastError = null;
-        for (let i = 0; i < retries; i++) {
-          const { data: profile, error: profileError } = await supabase
-            .from("users")
-            .select("role")
-            .eq("id", userId)
-            .single();
-
-          if (profile && !profileError) {
-            return { role: profile.role, error: null };
-          }
-
-          lastError = profileError;
-          console.warn(
-            `Tentative de chargement du profil ${i + 1}/${retries} échouée...`,
-            profileError,
-          );
-
-          if (i < retries - 1) {
-            await new Promise((resolve) => setTimeout(resolve, 800));
-          }
-        }
-        return { role: null, error: lastError };
-      };
-
-      const { role, error: fetchError } = await fetchProfile(data.user.id);
-
-      if (!role) {
-        console.error(
-          "Erreur fatale lors de la récupération du profil:",
-          fetchError,
-        );
-        const typedError = fetchError as { code?: string, message?: string };
-        throw new Error(
-          typedError?.code === "PGRST116"
-            ? "Profil introuvable dans la table 'users'."
-            : `Erreur de permission (RLS) : ${typedError?.message || "Inconnue"}. Vérifiez vos politiques Supabase.`,
-        );
-      }
+      // Stocker les informations reçues
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user_role", data.user.role);
+      localStorage.setItem("user_agence_id", data.user.agence_id || "");
 
       setMessage("Connexion réussie !");
       setIsError(false);
-      onLogin(role as UserRole);
+      onLogin(data.user.role as UserRole);
     } catch (err) {
       setIsError(true);
       if (err instanceof Error) setMessage(err.message);
