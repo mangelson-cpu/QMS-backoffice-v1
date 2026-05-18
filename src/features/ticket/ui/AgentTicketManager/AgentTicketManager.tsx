@@ -282,21 +282,43 @@ export const AgentTicketManager: React.FC = () => {
   useEffect(() => {
     setPersistentReaction(null);
 
-    if (currentTicket?.numero_ticket) {
-      const fetchExistingEvaluation = async () => {
-        try {
-          const res = await apiClient.get(`/evaluations?ticket_numero=${currentTicket.numero_ticket}`);
-          if (res.evaluation) {
-            setPersistentReaction("✅");
-          }
-        } catch (err) {
-          // Pas d'évaluation, c'est normal
-        }
-      };
+    if (!currentTicket?.numero_ticket) return;
 
-      fetchExistingEvaluation();
+    let isSubscribed = true;
+    let interval: NodeJS.Timeout | null = null;
+
+    const checkEvaluation = async () => {
+      try {
+        const res = await apiClient.get(`/evaluations?ticket_numero=${currentTicket.numero_ticket}`);
+        if (res.evaluation && isSubscribed) {
+          setPersistentReaction("✅");
+          if (interval) {
+            clearInterval(interval);
+            interval = null;
+          }
+        }
+      } catch (err) {
+        // Pas d'évaluation, c'est normal
+      }
+    };
+
+    // Vérifier immédiatement
+    checkEvaluation();
+
+    // Poller toutes les 3 secondes si le ticket est en cours d'appel ("called")
+    if (currentTicket.status === "called") {
+      interval = setInterval(() => {
+        checkEvaluation();
+      }, 3000);
     }
-  }, [currentTicket?.numero_ticket]);
+
+    return () => {
+      isSubscribed = false;
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [currentTicket?.numero_ticket, currentTicket?.status]);
 
   const handleAppeler = async (ticket: Ticket) => {
     if (!userId) return;

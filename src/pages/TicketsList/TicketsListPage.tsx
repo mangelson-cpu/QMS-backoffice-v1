@@ -1,8 +1,13 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import type { UserRole, Ticket } from "../../shared/types";
 import { AgentTicketManager } from "../../features/ticket/ui/AgentTicketManager/AgentTicketManager";
 import { apiClient } from "../../shared/api/apiClient";
-import { useDynamicPageSize } from "../../shared/hooks/useDynamicPageSize";
+import {
+  MdSentimentVerySatisfied,
+  MdSentimentNeutral,
+  MdSentimentVeryDissatisfied
+} from "react-icons/md";
+
 
 interface Props {
   userRole: UserRole;
@@ -17,16 +22,9 @@ type ExtendedTicket = Ticket & {
   evaluation_score?: number | null;
 };
 
-export const TicketsListPage: React.FC<Props> = ({ userRole, currentUserAgenceId }) => {
+export const TicketsListPage: React.FC<Props> = ({ userRole }) => {
   const [tickets, setTickets] = useState<ExtendedTicket[]>([]);
   const [loading, setLoading] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const tableContainerRef = useRef<HTMLDivElement>(null);
-  
-  const { itemsPerPage, needsPagination } = useDynamicPageSize(
-    tableContainerRef,
-    tickets.length
-  );
 
   const fetchTicketsData = useCallback(async () => {
     setLoading(true);
@@ -51,7 +49,6 @@ export const TicketsListPage: React.FC<Props> = ({ userRole, currentUserAgenceId
       }));
 
       setTickets(formattedTickets);
-      setCurrentPage(1);
     } catch (err) {
       console.error("Error fetching admin tickets:", err);
     } finally {
@@ -69,21 +66,22 @@ export const TicketsListPage: React.FC<Props> = ({ userRole, currentUserAgenceId
     return <AgentTicketManager />;
   }
 
-  const getEmojiForScore = (score: number | null | undefined) => {
-    if (score === null || score === undefined) return "---";
-    if (score === 1) return "😍 Très satisfait";
-    if (score === 2) return "😐 Neutre";
-    if (score === 3) return "😡 Insatisfait";
-    return `${score}`;
+  const getEmojiForScore = (score: any) => {
+    if (score === null || score === undefined || score === "") return "---";
+    const num = Number(score);
+    if (num === 3) return <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}><MdSentimentVerySatisfied size={20} color="#10b981" /> Très satisfait</span>;
+    if (num === 2) return <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}><MdSentimentNeutral size={20} color="#f59e0b" /> Neutre</span>;
+    if (num === 1) return <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}><MdSentimentVeryDissatisfied size={20} color="#ef4444" /> Insatisfait</span>;
+    return `Note: ${score}`;
   };
 
   const getStatusBadgeClass = (status: string) => {
-    switch(status) {
+    switch (status) {
       case "waiting": return "priority-normal";
-      case "ready": return "priority-normal"; 
+      case "ready": return "priority-normal";
       case "called": return "priority-vip";
-      case "done": return "priority-normal"; 
-      case "cancelled": return "priority-urgent"; 
+      case "done": return "priority-normal";
+      case "cancelled": return "priority-urgent";
       default: return "";
     }
   };
@@ -91,26 +89,26 @@ export const TicketsListPage: React.FC<Props> = ({ userRole, currentUserAgenceId
   const formatDuration = (start: Date, end: Date) => {
     const diffMs = Math.max(0, end.getTime() - start.getTime());
     const diffSecs = Math.floor(diffMs / 1000);
-    
+
     if (diffSecs < 60) return `${diffSecs} s`;
-    
+
     const mins = Math.floor(diffSecs / 60);
     const secs = diffSecs % 60;
-    
+
     if (mins < 60) {
       return secs > 0 ? `${mins} min ${secs} s` : `${mins} min`;
     }
-    
+
     const hours = Math.floor(mins / 60);
     const remainingMins = mins % 60;
-    
+
     if (hours < 24) {
       return remainingMins > 0 ? `${hours} h ${remainingMins} min` : `${hours} h`;
     }
-    
+
     const days = Math.floor(hours / 24);
     const remainingHours = hours % 24;
-    
+
     return remainingHours > 0 ? `${days} j ${remainingHours} h` : `${days} j`;
   };
 
@@ -123,7 +121,7 @@ export const TicketsListPage: React.FC<Props> = ({ userRole, currentUserAgenceId
         </div>
       </header>
 
-      <div className="content-card" ref={tableContainerRef} style={{ overflowX: "auto", position: "relative" }}>
+      <div className="content-card" style={{ overflowX: "auto", overflowY: "auto", position: "relative", flex: 1, minHeight: 0 }}>
         {loading ? (
           <div style={{ padding: "3rem", textAlign: "center" }}>Chargement des données...</div>
         ) : (
@@ -147,24 +145,19 @@ export const TicketsListPage: React.FC<Props> = ({ userRole, currentUserAgenceId
               </thead>
               <tbody>
                 {tickets.length > 0 ? (
-                  tickets
-                    .slice(
-                      (currentPage - 1) * itemsPerPage,
-                      currentPage * itemsPerPage
-                    )
-                    .map((t) => {
+                  tickets.map((t) => {
                       const createdAt = new Date(t.created_at);
                       const beginAt = t.date_debut ? new Date(t.date_debut) : null;
                       const endAt = t.date_fin ? new Date(t.date_fin) : null;
-                      
+
                       const timeString = createdAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
                       const dateString = createdAt.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
-                      
+
                       let waitTime = "---";
                       if (beginAt) {
                         waitTime = formatDuration(createdAt, beginAt);
                       }
-                      
+
                       let processTime = "---";
                       if (beginAt && endAt) {
                         processTime = formatDuration(beginAt, endAt);
@@ -216,40 +209,7 @@ export const TicketsListPage: React.FC<Props> = ({ userRole, currentUserAgenceId
                 )}
               </tbody>
             </table>
-            
-            {needsPagination && (
-              <div className="pagination-controls" style={{ marginTop: "1rem" }}>
-                <button
-                  className="pagination-btn"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                >
-                  ←
-                </button>
-                {Array.from(
-                  { length: Math.ceil(tickets.length / itemsPerPage) },
-                  (_, i) => i + 1
-                ).map((page) => (
-                  <button
-                    key={page}
-                    className={`pagination-btn ${currentPage === page ? "active" : ""}`}
-                    onClick={() => setCurrentPage(page)}
-                  >
-                    {page}
-                  </button>
-                ))}
-                <button
-                  className="pagination-btn"
-                  disabled={currentPage === Math.ceil(tickets.length / itemsPerPage)}
-                  onClick={() => setCurrentPage((p) => Math.min(Math.ceil(tickets.length / itemsPerPage), p + 1))}
-                >
-                  →
-                </button>
-                <span className="pagination-info" style={{ marginLeft: "1rem" }}>
-                  {tickets.length} ticket{tickets.length > 1 ? "s" : ""}
-                </span>
-              </div>
-            )}
+
           </>
         )}
       </div>
