@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiBriefcase } from 'react-icons/fi';
+import { FiPlus, FiBriefcase, FiInbox } from 'react-icons/fi';
 
 interface Filiale {
   id: string;
@@ -97,8 +97,26 @@ export const FilialesPage: React.FC = () => {
           <tbody>
             {filiales.length === 0 ? (
               <tr>
-                <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: "var(--text-secondary)" }}>
-                  Aucune filiale trouvée
+                <td
+                  colSpan={4}
+                  style={{
+                    textAlign: "center",
+                    padding: "3.5rem 2rem",
+                    color: "#94a3b8",
+                  }}
+                >
+                  <div style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "1rem",
+                    justifyContent: "center"
+                  }}>
+                    <FiInbox style={{ fontSize: "3.5rem", color: "#cbd5e1" }} />
+                    <span style={{ fontSize: "1.1rem", fontWeight: 500 }}>
+                      Aucune filiale trouvée
+                    </span>
+                  </div>
                 </td>
               </tr>
             ) : (

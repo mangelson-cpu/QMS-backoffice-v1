@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { MdPhone, MdSkipNext, MdCheckCircle } from "react-icons/md";
 import { TbDatabaseOff } from "react-icons/tb";
 import { FaCoffee } from "react-icons/fa";
@@ -33,9 +33,6 @@ export const AgentTicketManager: React.FC = () => {
   const [selectedSousServiceId, setSelectedSousServiceId] =
     useState<string>("");
 
-  const [reactions, setReactions] = useState<
-    { id: string; emoji: string; left: number }[]
-  >([]);
   const [persistentReaction, setPersistentReaction] = useState<string | null>(
     null,
   );
@@ -282,14 +279,14 @@ export const AgentTicketManager: React.FC = () => {
   useEffect(() => {
     setPersistentReaction(null);
 
-    if (!currentTicket?.numero_ticket) return;
+    if (!currentTicket?.id) return;
 
     let isSubscribed = true;
-    let interval: NodeJS.Timeout | null = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
 
     const checkEvaluation = async () => {
       try {
-        const res = await apiClient.get(`/evaluations?ticket_numero=${currentTicket.numero_ticket}`);
+        const res = await apiClient.get(`/evaluations?ticket_id=${currentTicket.id}`);
         if (res.evaluation && isSubscribed) {
           setPersistentReaction("✅");
           if (interval) {
@@ -318,7 +315,7 @@ export const AgentTicketManager: React.FC = () => {
         clearInterval(interval);
       }
     };
-  }, [currentTicket?.numero_ticket, currentTicket?.status]);
+  }, [currentTicket?.id, currentTicket?.status]);
 
   const handleAppeler = async (ticket: Ticket) => {
     if (!userId) return;
@@ -328,7 +325,7 @@ export const AgentTicketManager: React.FC = () => {
       try {
         await apiClient.patch(`/tickets/${ticket.id}/status`, {
           status: "called",
-          nom_guichet: guichetName ?? undefined,
+          nom_guichet: guichetName,
           date_debut: dateDebut,
         });
 
@@ -339,7 +336,7 @@ export const AgentTicketManager: React.FC = () => {
                 ...t,
                 status: "called" as const,
                 user_id: userId,
-                nom_guichet: guichetName ?? undefined,
+                nom_guichet: guichetName,
                 date_debut: dateDebut,
               }
               : t,
@@ -689,17 +686,7 @@ export const AgentTicketManager: React.FC = () => {
                         </div>
                       )}
 
-                      <div className="reactions-container">
-                        {reactions.map((r) => (
-                          <div
-                            key={r.id}
-                            className="floating-emoji"
-                            style={{ left: `${r.left}%` }}
-                          >
-                            {r.emoji}
-                          </div>
-                        ))}
-                      </div>
+
 
                       <button
                         className="btn-terminer-mockup"

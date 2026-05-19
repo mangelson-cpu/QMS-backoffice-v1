@@ -1,7 +1,6 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { useDynamicPageSize } from "../../../shared/hooks/useDynamicPageSize";
+import React, { useEffect, useState, useCallback } from "react";
 import { apiClient } from "../../../shared/api/apiClient";
-import { FiUser, FiEdit2 } from "react-icons/fi";
+import { FiUser, FiEdit2, FiInbox, FiFilter } from "react-icons/fi";
 import type { UserRole, Agence, User } from "../../../shared/types";
 
 interface Props {
@@ -19,12 +18,6 @@ export const CreateUserForm: React.FC<Props> = ({
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const tableContainerRef = useRef<HTMLDivElement>(null);
-  const { itemsPerPage, needsPagination } = useDynamicPageSize(
-    tableContainerRef,
-    users.length,
-  );
 
   const [email, setEmail] = useState("");
   const [nom, setNom] = useState("");
@@ -34,6 +27,7 @@ export const CreateUserForm: React.FC<Props> = ({
   const [filialeId, setFilialeId] = useState<string>("");
   const [filiales, setFiliales] = useState<any[]>([]);
   const [agencesForFiliale, setAgencesForFiliale] = useState<Agence[]>([]);
+  const [selectedFilterFilialeId, setSelectedFilterFilialeId] = useState<string>("");
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -107,7 +101,6 @@ export const CreateUserForm: React.FC<Props> = ({
       const currentUserId = JSON.parse(atob(localStorage.getItem('token')?.split('.')[1] || '')).id;
       const filteredUsers = (data.users as User[]).filter(u => u.id !== currentUserId);
       setUsers(filteredUsers);
-      setCurrentPage(1);
     } catch (err) {
       if (ignore) return;
       console.error("fetchUsers erreur:", err);
@@ -130,6 +123,12 @@ export const CreateUserForm: React.FC<Props> = ({
       ignore = true;
     };
   }, [fetchUsers]);
+
+  const filteredUsersList = users.filter(user => {
+    if (userRole !== "super_admin") return true;
+    if (!selectedFilterFilialeId) return true;
+    return (user as any).filiale_id === selectedFilterFilialeId || (user as any).filiale?.id === selectedFilterFilialeId;
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,12 +238,49 @@ export const CreateUserForm: React.FC<Props> = ({
               : "Gérez les agents de votre agence"}
           </p>
         </div>
-        <button
-          className="primary-gradient-btn"
-          onClick={() => setShowModal(true)}
-        >
-          + Créer un agent
-        </button>
+        <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+          {userRole === "super_admin" && (
+            <div style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              gap: "0.75rem", 
+              background: "#ffffff", 
+              padding: "0.75rem 1.25rem", 
+              borderRadius: "14px", 
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.03)",
+              transition: "all 0.2s ease"
+            }}>
+              <FiFilter style={{ fontSize: "1.2rem", color: "var(--primary-color, #8b5cf6)" }} />
+              <select 
+                value={selectedFilterFilialeId} 
+                onChange={(e) => setSelectedFilterFilialeId(e.target.value)}
+                style={{ 
+                  border: "none", 
+                  outline: "none", 
+                  background: "transparent", 
+                  fontWeight: 600, 
+                  fontSize: "0.95rem",
+                  color: "#1e293b",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  paddingRight: "0.5rem"
+                }}
+              >
+                <option value="">Toutes les filiales</option>
+                {filiales.map(f => (
+                  <option key={f.id} value={f.id}>{f.nom}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <button
+            className="primary-gradient-btn"
+            onClick={() => setShowModal(true)}
+          >
+            + Créer un agent
+          </button>
+        </div>
       </header>
 
       {showModal && (
@@ -513,7 +549,7 @@ export const CreateUserForm: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="content-card" ref={tableContainerRef}>
+      <div className="content-card" style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 240px)", position: "relative" }}>
         {fetchError && (
           <div
             className="auth-message auth-message--error"
@@ -539,12 +575,8 @@ export const CreateUserForm: React.FC<Props> = ({
             </tr>
           </thead>
           <tbody>
-            {users
-              .slice(
-                (currentPage - 1) * itemsPerPage,
-                currentPage * itemsPerPage,
-              )
-              .map((user) => (
+            {filteredUsersList.length > 0 ? (
+              filteredUsersList.map((user) => (
                 <tr key={user.id}>
                   <td className="font-bold">{user.nom_user}</td>
                   <td className="text-secondary">{user.email}</td>
@@ -596,42 +628,34 @@ export const CreateUserForm: React.FC<Props> = ({
                     </button>
                   </td>
                 </tr>
-              ))}
+              ))
+            ) : (
+              <tr>
+                <td
+                  colSpan={userRole === "super_admin" ? 6 : 5}
+                  style={{
+                    textAlign: "center",
+                    padding: "3.5rem 2rem",
+                    color: "#94a3b8",
+                  }}
+                >
+                  <div style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "1rem",
+                    justifyContent: "center"
+                  }}>
+                    <FiInbox style={{ fontSize: "3.5rem", color: "#cbd5e1" }} />
+                    <span style={{ fontSize: "1.1rem", fontWeight: 500 }}>
+                      Aucun utilisateur configuré.
+                    </span>
+                  </div>
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
-        {needsPagination && (
-          <div className="pagination-controls">
-            <button
-              className="pagination-btn"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => p - 1)}
-            >
-              ←
-            </button>
-            {Array.from(
-              { length: Math.ceil(users.length / itemsPerPage) },
-              (_, i) => i + 1,
-            ).map((page) => (
-              <button
-                key={page}
-                className={`pagination-btn ${currentPage === page ? "active" : ""}`}
-                onClick={() => setCurrentPage(page)}
-              >
-                {page}
-              </button>
-            ))}
-            <button
-              className="pagination-btn"
-              disabled={currentPage === Math.ceil(users.length / itemsPerPage)}
-              onClick={() => setCurrentPage((p) => p + 1)}
-            >
-              →
-            </button>
-            <span className="pagination-info">
-              {users.length} agent{users.length > 1 ? "s" : ""}
-            </span>
-          </div>
-        )}
       </div>
     </div>
   );

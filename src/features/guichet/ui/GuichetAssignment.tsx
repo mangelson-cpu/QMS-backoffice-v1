@@ -1,5 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { useDynamicPageSize } from "../../../shared/hooks/useDynamicPageSize";
+import React, { useEffect, useState, useCallback } from "react";
 import { apiClient } from "../../../shared/api/apiClient";
 import type {
   Service,
@@ -7,7 +6,7 @@ import type {
   GuichetService,
   UserRole,
 } from "../../../shared/types";
-import { FiTool } from "react-icons/fi";
+import { FiTool, FiInbox } from "react-icons/fi";
 import "./GuichetAssignment.css";
 
 interface Props {
@@ -34,12 +33,6 @@ export const GuichetAssignment: React.FC<Props> = ({
   const [message, setMessage] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
   const [fetchError, setFetchError] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const tableContainerRef = useRef<HTMLDivElement>(null);
-  const { itemsPerPage, needsPagination } = useDynamicPageSize(
-    tableContainerRef,
-    guichets.length,
-  );
 
   const fetchData = useCallback(
     async (ignore: boolean = false) => {
@@ -244,7 +237,12 @@ export const GuichetAssignment: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="content-card" ref={tableContainerRef}>
+      <div className="content-card" style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 240px)", position: "relative" }}>
+        {fetchError && (
+          <div className="auth-message auth-message--error" style={{ marginBottom: "1.5rem" }}>
+            {fetchError}
+          </div>
+        )}
         <table className="premium-table">
           <thead>
             <tr>
@@ -255,9 +253,8 @@ export const GuichetAssignment: React.FC<Props> = ({
             </tr>
           </thead>
           <tbody>
-            {groupedAssignments
-              .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-              .map((group) => (
+            {groupedAssignments.length > 0 ? (
+              groupedAssignments.map((group) => (
                 <tr key={group.nom_guichet}>
                   <td className="font-bold">{group.nom_guichet} {group.appellation ? `(${group.appellation})` : ""}</td>
                   <td className="text-secondary">{group.agence_nom}</td>
@@ -279,16 +276,34 @@ export const GuichetAssignment: React.FC<Props> = ({
                     </button>
                   </td>
                 </tr>
-              ))}
+              ))
+            ) : (
+              <tr>
+                <td
+                  colSpan={4}
+                  style={{
+                    textAlign: "center",
+                    padding: "3.5rem 2rem",
+                    color: "#94a3b8",
+                  }}
+                >
+                  <div style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "1rem",
+                    justifyContent: "center"
+                  }}>
+                    <FiInbox style={{ fontSize: "3.5rem", color: "#cbd5e1" }} />
+                    <span style={{ fontSize: "1.1rem", fontWeight: 500 }}>
+                      Aucune assignation de guichet trouvée.
+                    </span>
+                  </div>
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
-        {needsPagination && (
-          <div className="pagination-controls">
-            <button className="pagination-btn" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}>←</button>
-            <button className="pagination-btn active">{currentPage}</button>
-            <button className="pagination-btn" disabled={currentPage >= Math.ceil(groupedAssignments.length / itemsPerPage)} onClick={() => setCurrentPage(p => p + 1)}>→</button>
-          </div>
-        )}
       </div>
     </div>
   );

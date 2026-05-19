@@ -4,7 +4,7 @@ import { FiLock } from "react-icons/fi";
 import type { UserRole } from "../../../shared/types";
 
 interface Props {
-  onLogin: (role: UserRole) => void;
+  onLogin: (role: UserRole, agenceId: string | null) => void;
 }
 
 export const LoginForm: React.FC<Props> = ({ onLogin }) => {
@@ -40,7 +40,7 @@ export const LoginForm: React.FC<Props> = ({ onLogin }) => {
 
       setMessage("Connexion réussie !");
       setIsError(false);
-      onLogin(data.user.role as UserRole);
+      onLogin(data.user.role as UserRole, data.user.agence_id || null);
     } catch (err) {
       setIsError(true);
       if (err instanceof Error) setMessage(err.message);

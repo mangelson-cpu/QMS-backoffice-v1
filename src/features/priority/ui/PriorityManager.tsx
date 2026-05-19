@@ -1,8 +1,7 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { apiClient, setSelectedFiliale, getSelectedFiliale } from "../../../shared/api/apiClient";
-import { FiZap, FiFilter } from "react-icons/fi";
+import { FiZap, FiFilter, FiInbox } from "react-icons/fi";
 import type { Priority, UserRole } from "../../../shared/types";
-import { useDynamicPageSize } from "../../../shared/hooks/useDynamicPageSize";
 
 interface Props {
   userRole: UserRole;
@@ -23,13 +22,6 @@ export const PriorityManager: React.FC<Props> = ({ userRole, currentUserAgenceId
   const [message, setMessage] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
   const [fetchError, setFetchError] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const tableContainerRef = useRef<HTMLDivElement>(null);
-
-  const { itemsPerPage, needsPagination } = useDynamicPageSize(
-    tableContainerRef,
-    priorities.length
-  );
 
   const isSuperAdmin = userRole === "super_admin";
 
@@ -194,9 +186,6 @@ export const PriorityManager: React.FC<Props> = ({ userRole, currentUserAgenceId
     setIsSuccess(false);
   };
 
-  const paginated = priorities.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-  const totalPages = Math.ceil(priorities.length / itemsPerPage);
-
   return (
     <div className="services-page">
       <header className="page-header">
@@ -206,12 +195,32 @@ export const PriorityManager: React.FC<Props> = ({ userRole, currentUserAgenceId
         </div>
         <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
           {isSuperAdmin && (
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "white", padding: "0.5rem 1rem", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
-              <FiFilter color="var(--primary-color)" />
+            <div style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              gap: "0.75rem", 
+              background: "#ffffff", 
+              padding: "0.75rem 1.25rem", 
+              borderRadius: "14px", 
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.03)",
+              transition: "all 0.2s ease"
+            }}>
+              <FiFilter style={{ fontSize: "1.2rem", color: "var(--primary-color, #8b5cf6)" }} />
               <select
                 value={selectedFilialeId}
                 onChange={(e) => handleFilialeChange(e.target.value)}
-                style={{ border: "none", outline: "none", background: "transparent", fontWeight: "bold", color: "var(--text-color)" }}
+                style={{ 
+                  border: "none", 
+                  outline: "none", 
+                  background: "transparent", 
+                  fontWeight: 600, 
+                  fontSize: "0.95rem",
+                  color: "#1e293b",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  paddingRight: "0.5rem"
+                }}
               >
                 <option value="">Sélectionner une filiale</option>
                 {filiales.map(f => (
@@ -322,7 +331,7 @@ export const PriorityManager: React.FC<Props> = ({ userRole, currentUserAgenceId
         </div>
       )}
 
-      <div className="content-card" ref={tableContainerRef}>
+      <div className="content-card" style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 240px)", position: "relative" }}>
         {fetchError && (
           <div className="auth-message auth-message--error" style={{ marginBottom: "1rem" }}>
             {fetchError}
@@ -339,8 +348,8 @@ export const PriorityManager: React.FC<Props> = ({ userRole, currentUserAgenceId
             </tr>
           </thead>
           <tbody>
-            {paginated.length > 0 ? (
-              paginated.map((priority) => (
+            {priorities.length > 0 ? (
+              priorities.map((priority) => (
                 <tr key={priority.id}>
                   <td className="font-bold">{priority.nom}</td>
                   <td>
@@ -426,41 +435,31 @@ export const PriorityManager: React.FC<Props> = ({ userRole, currentUserAgenceId
               ))
             ) : (
               <tr>
-                <td colSpan={(isSuperAdmin || userRole === "admin") ? 4 : 3} style={{ textAlign: "center", padding: "3rem", color: "#64748b", fontStyle: "italic" }}>
-                  Aucune priorité configurée.
+                <td
+                  colSpan={(isSuperAdmin || userRole === "admin") ? 4 : 3}
+                  style={{
+                    textAlign: "center",
+                    padding: "3.5rem 2rem",
+                    color: "#94a3b8",
+                  }}
+                >
+                  <div style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "1rem",
+                    justifyContent: "center"
+                  }}>
+                    <FiInbox style={{ fontSize: "3.5rem", color: "#cbd5e1" }} />
+                    <span style={{ fontSize: "1.1rem", fontWeight: 500 }}>
+                      Aucune priorité configurée.
+                    </span>
+                  </div>
                 </td>
               </tr>
             )}
           </tbody>
         </table>
-
-        {needsPagination && (
-          <div className="pagination-controls">
-            <button
-              className="pagination-btn"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => p - 1)}
-            >
-              ←
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <button
-                key={page}
-                className={`pagination-btn ${currentPage === page ? "active" : ""}`}
-                onClick={() => setCurrentPage(page)}
-              >
-                {page}
-              </button>
-            ))}
-            <button
-              className="pagination-btn"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((p) => p + 1)}
-            >
-              →
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

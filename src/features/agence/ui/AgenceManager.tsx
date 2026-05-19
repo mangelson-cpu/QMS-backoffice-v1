@@ -1,6 +1,5 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { useDynamicPageSize } from "../../../shared/hooks/useDynamicPageSize";
-import { FiBriefcase, FiFilter } from "react-icons/fi";
+import React, { useEffect, useState, useCallback } from "react";
+import { FiBriefcase, FiFilter, FiInbox } from "react-icons/fi";
 import type { Agence } from "../../../shared/types";
 
 export const AgenceManager: React.FC = () => {
@@ -18,13 +17,6 @@ export const AgenceManager: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [filiales, setFiliales] = useState<any[]>([]);
   const [selectedFilialeId, setSelectedFilialeId] = useState<string>("");
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const tableContainerRef = useRef<HTMLDivElement>(null);
-  const { itemsPerPage, needsPagination } = useDynamicPageSize(
-    tableContainerRef,
-    agences.length,
-  );
 
   useEffect(() => {
     // 1. Récupérer l'utilisateur pour connaître son rôle
@@ -47,7 +39,7 @@ export const AgenceManager: React.FC = () => {
             });
             if (resFiliales.ok) {
               const { filiales } = await resFiliales.json();
-              setFiliales(filiales);
+              setFiliales(filiales || []);
               if (filiales.length > 0) {
                 setSelectedFilialeId(filiales[0].id);
               }
@@ -78,7 +70,6 @@ export const AgenceManager: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         setAgences(data.agences || []);
-        setCurrentPage(1);
       } else {
         const data = await res.json();
         console.error("Erreur API Agences:", data.error);
@@ -229,12 +220,32 @@ export const AgenceManager: React.FC = () => {
 
         <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
           {currentUser?.role === "super_admin" && (
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "white", padding: "0.5rem 1rem", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
-              <FiFilter color="var(--primary-color)" />
+            <div style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              gap: "0.75rem", 
+              background: "#ffffff", 
+              padding: "0.75rem 1.25rem", 
+              borderRadius: "14px", 
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.03)",
+              transition: "all 0.2s ease"
+            }}>
+              <FiFilter style={{ fontSize: "1.2rem", color: "var(--primary-color, #8b5cf6)" }} />
               <select 
                 value={selectedFilialeId} 
                 onChange={(e) => setSelectedFilialeId(e.target.value)}
-                style={{ border: "none", outline: "none", background: "transparent", fontWeight: "bold", color: "var(--text-color)" }}
+                style={{ 
+                  border: "none", 
+                  outline: "none", 
+                  background: "transparent", 
+                  fontWeight: 600, 
+                  fontSize: "0.95rem",
+                  color: "#1e293b",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  paddingRight: "0.5rem"
+                }}
               >
                 <option value="">Toutes les filiales</option>
                 {filiales.map(f => (
@@ -335,7 +346,7 @@ export const AgenceManager: React.FC = () => {
         </div>
       )}
 
-      <div className="content-card" ref={tableContainerRef}>
+      <div className="content-card" style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 240px)", position: "relative" }}>
         <table className="premium-table">
           <thead>
             <tr>
@@ -350,10 +361,6 @@ export const AgenceManager: React.FC = () => {
           <tbody>
             {agences.length > 0 ? (
               agences
-                .slice(
-                  (currentPage - 1) * itemsPerPage,
-                  currentPage * itemsPerPage,
-                )
                 .map((agence: any) => (
                   <tr key={agence.id}>
                     <td className="font-bold">{agence.nom}</td>
@@ -482,53 +489,29 @@ export const AgenceManager: React.FC = () => {
                   colSpan={6}
                   style={{
                     textAlign: "center",
-                    padding: "2rem",
-                    color: "var(--text-secondary)",
+                    padding: "3.5rem 2rem",
+                    color: "#94a3b8",
                   }}
                 >
-                  {currentUser?.role === 'super_admin' && !selectedFilialeId 
-                    ? "Veuillez sélectionner une filiale pour voir ses agences." 
-                    : "Aucune agence trouvée dans cette filiale."}
+                  <div style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "1rem",
+                    justifyContent: "center"
+                  }}>
+                    <FiInbox style={{ fontSize: "3.5rem", color: "#cbd5e1" }} />
+                    <span style={{ fontSize: "1.1rem", fontWeight: 500 }}>
+                      {currentUser?.role === 'super_admin' && !selectedFilialeId 
+                        ? "Veuillez sélectionner une filiale pour voir ses agences." 
+                        : "Aucune agence trouvée dans cette filiale."}
+                    </span>
+                  </div>
                 </td>
               </tr>
             )}
           </tbody>
         </table>
-        {needsPagination && (
-          <div className="pagination-controls">
-            <button
-              className="pagination-btn"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => p - 1)}
-            >
-              ←
-            </button>
-            {Array.from(
-              { length: Math.ceil(agences.length / itemsPerPage) },
-              (_, i) => i + 1,
-            ).map((page) => (
-              <button
-                key={page}
-                className={`pagination-btn ${currentPage === page ? "active" : ""}`}
-                onClick={() => setCurrentPage(page)}
-              >
-                {page}
-              </button>
-            ))}
-            <button
-              className="pagination-btn"
-              disabled={
-                currentPage === Math.ceil(agences.length / itemsPerPage)
-              }
-              onClick={() => setCurrentPage((p) => p + 1)}
-            >
-              →
-            </button>
-            <span className="pagination-info">
-              {agences.length} agence{agences.length > 1 ? "s" : ""}
-            </span>
-          </div>
-        )}
       </div>
     </div>
   );

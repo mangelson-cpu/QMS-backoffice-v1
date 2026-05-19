@@ -91,8 +91,9 @@ function App() {
     window.location.replace("/login");
   };
 
-  const handleLoginSuccess = (role: UserRole) => {
+  const handleLoginSuccess = (role: UserRole, agenceId: string | null) => {
     setUserRole(role);
+    setUserAgenceId(agenceId);
   };
 
   return (

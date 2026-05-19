@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { apiClient } from "../../../shared/api/apiClient";
-import { FiFolder } from "react-icons/fi";
+import { FiFolder, FiInbox } from "react-icons/fi";
 import type { Service, SousService } from "../../../shared/types";
 
 interface Props {
@@ -133,9 +133,20 @@ export const SousServiceModal: React.FC<Props> = ({
           style={{ maxHeight: "300px", overflowY: "auto" }}
         >
           {sousServices.length === 0 ? (
-            <p style={{ textAlign: "center", color: "var(--text-secondary)" }}>
-              Aucun sous-service n'a été créé.
-            </p>
+            <div style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "0.75rem",
+              justifyContent: "center",
+              padding: "2rem",
+              color: "#94a3b8"
+            }}>
+              <FiInbox style={{ fontSize: "2.5rem", color: "#cbd5e1" }} />
+              <span style={{ fontSize: "0.95rem", fontWeight: 500 }}>
+                Aucun sous-service n'a été créé.
+              </span>
+            </div>
           ) : (
             <table className="premium-table" style={{ width: "100%" }}>
               <thead>

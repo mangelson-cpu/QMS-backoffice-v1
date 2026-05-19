@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { apiClient } from "../../../shared/api/apiClient";
 import type { Priority, AgencePriority, UserRole } from "../../../shared/types";
-import { useDynamicPageSize } from "../../../shared/hooks/useDynamicPageSize";
+import { FiInbox } from "react-icons/fi";
 
 interface Props {
   userRole: UserRole;
@@ -21,13 +21,6 @@ export const PriorityAssignment: React.FC<Props> = ({ userRole, currentUserAgenc
   const [loading, setLoading] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const tableContainerRef = useRef<HTMLDivElement>(null);
-
-  const { itemsPerPage, needsPagination } = useDynamicPageSize(
-    tableContainerRef,
-    globalPriorities.length
-  );
 
   const fetchPriorities = useCallback(async () => {
     if (!currentUserAgenceId) return;
@@ -88,8 +81,6 @@ export const PriorityAssignment: React.FC<Props> = ({ userRole, currentUserAgenc
   };
 
   const activeCount = agencyPriorities.filter(ap => ap.is_active).length;
-  const paginated = globalPriorities.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-  const totalPages = Math.ceil(globalPriorities.length / itemsPerPage);
 
   if (userRole !== "admin") {
     return <div className="auth-permission-denied">Accès réservé aux administrateurs.</div>;
@@ -114,7 +105,7 @@ export const PriorityAssignment: React.FC<Props> = ({ userRole, currentUserAgenc
         </div>
       </header>
 
-      <div className="content-card" ref={tableContainerRef}>
+      <div className="content-card" style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 240px)", position: "relative" }}>
         {fetchError && (
           <div className="auth-message auth-message--error" style={{ marginBottom: "1.5rem" }}>
             {fetchError}
@@ -137,8 +128,8 @@ export const PriorityAssignment: React.FC<Props> = ({ userRole, currentUserAgenc
                   <td colSpan={4} style={{ textAlign: "center", padding: "1rem" }}>Chargement...</td>
                 </tr>
               ))
-            ) : paginated.length > 0 ? (
-              paginated.map((p) => {
+            ) : globalPriorities.length > 0 ? (
+              globalPriorities.map((p) => {
                 const active = isActive(p.id);
                 return (
                   <tr key={p.id}>
@@ -192,41 +183,31 @@ export const PriorityAssignment: React.FC<Props> = ({ userRole, currentUserAgenc
               })
             ) : (
               <tr>
-                <td colSpan={4} style={{ textAlign: "center", padding: "3rem", color: "#64748b" }}>
-                  Aucune priorité disponible.
+                <td
+                  colSpan={4}
+                  style={{
+                    textAlign: "center",
+                    padding: "3.5rem 2rem",
+                    color: "#94a3b8",
+                  }}
+                >
+                  <div style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "1rem",
+                    justifyContent: "center"
+                  }}>
+                    <FiInbox style={{ fontSize: "3.5rem", color: "#cbd5e1" }} />
+                    <span style={{ fontSize: "1.1rem", fontWeight: 500 }}>
+                      Aucune priorité disponible.
+                    </span>
+                  </div>
                 </td>
               </tr>
             )}
           </tbody>
         </table>
-
-        {needsPagination && (
-          <div className="pagination-controls">
-            <button
-              className="pagination-btn"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage(p => p - 1)}
-            >
-              ←
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-              <button
-                key={page}
-                className={`pagination-btn ${currentPage === page ? "active" : ""}`}
-                onClick={() => setCurrentPage(page)}
-              >
-                {page}
-              </button>
-            ))}
-            <button
-              className="pagination-btn"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage(p => p + 1)}
-            >
-              →
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

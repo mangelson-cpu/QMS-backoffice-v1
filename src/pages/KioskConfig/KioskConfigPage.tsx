@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { FiLock, FiSave, FiCheck, FiAlertCircle } from "react-icons/fi";
-import { supabase } from "../../shared/api/supabaseClient";
+import { apiClient } from "../../shared/api/apiClient";
 
 export const KioskConfigPage: React.FC = () => {
   const [kioskPassword, setKioskPassword] = useState("");
@@ -13,17 +13,11 @@ export const KioskConfigPage: React.FC = () => {
     setMessage("");
 
     try {
-      const { error } = await supabase.rpc("update_kiosk_password", {
-        p_password: kioskPassword,
+      const data = await apiClient.post("/agences/kiosk-password", {
+        password: kioskPassword,
       });
 
-      if (error) throw error;
-
-      setMessage(
-        kioskPassword
-          ? "Mot de passe de la borne mis à jour !"
-          : "Mot de passe supprimé (borne déverrouillée).",
-      );
+      setMessage(data.message || "Opération réussie.");
       setIsSuccess(true);
       setKioskPassword("");
     } catch (err: any) {
