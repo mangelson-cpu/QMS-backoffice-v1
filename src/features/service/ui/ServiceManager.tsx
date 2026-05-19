@@ -3,6 +3,14 @@ import { apiClient, setSelectedFiliale, getSelectedFiliale } from "../../../shar
 import { FiTool, FiFilter, FiInbox } from "react-icons/fi";
 import type { Service, UserRole } from "../../../shared/types";
 import { SousServiceModal } from "./SousServiceModal";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
 
 interface Props {
   userRole: UserRole;
@@ -155,39 +163,23 @@ export const ServiceManager: React.FC<Props> = ({ userRole }) => {
         </div>
         <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
           {isSuperAdmin && (
-            <div style={{ 
-              display: "flex", 
-              alignItems: "center", 
-              gap: "0.75rem", 
-              background: "#ffffff", 
-              padding: "0.75rem 1.25rem", 
-              borderRadius: "14px", 
-              border: "1px solid #e2e8f0",
-              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.03)",
-              transition: "all 0.2s ease"
-            }}>
-              <FiFilter style={{ fontSize: "1.2rem", color: "var(--primary-color, #8b5cf6)" }} />
-              <select
-                value={selectedFilialeId}
-                onChange={(e) => handleFilialeChange(e.target.value)}
-                style={{ 
-                  border: "none", 
-                  outline: "none", 
-                  background: "transparent", 
-                  fontWeight: 600, 
-                  fontSize: "0.95rem",
-                  color: "#1e293b",
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  paddingRight: "0.5rem"
-                }}
-              >
-                <option value="">Sélectionner une filiale</option>
-                {filiales.map(f => (
-                  <option key={f.id} value={f.id}>{f.nom}</option>
-                ))}
-              </select>
-            </div>
+            <Combobox
+              items={filiales}
+              value={selectedFilialeId}
+              onChange={handleFilialeChange}
+            >
+              <ComboboxInput leftIcon={<FiFilter style={{ color: "var(--primary-color, #8b5cf6)" }} />} placeholder="Filtrer par filiale..." />
+              <ComboboxContent>
+                <ComboboxEmpty>Aucune filiale.</ComboboxEmpty>
+                <ComboboxList>
+                  {(f, idx) => (
+                    <ComboboxItem key={f.id} value={f} index={idx}>
+                      {f.nom}
+                    </ComboboxItem>
+                  )}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
           )}
           {isSuperAdmin && (
             <button className="primary-gradient-btn" onClick={openCreateModal}>
@@ -223,20 +215,26 @@ export const ServiceManager: React.FC<Props> = ({ userRole }) => {
 
             <form className="auth-form" onSubmit={handleSubmit}>
               {isSuperAdmin && (
-                <div className="auth-input-group">
+                <div className="auth-input-group" style={{ position: "relative", zIndex: 1100 }}>
                   <label className="auth-input-label">Filiale</label>
-                  <select
-                    className="auth-select"
+                  <Combobox
+                    items={filiales}
                     value={modalFilialeId}
-                    onChange={(e) => setModalFilialeId(e.target.value)}
-                    required
-                    style={{ width: "100%" }}
+                    onChange={(val) => setModalFilialeId(val)}
+                    style={{ maxWidth: "100%" }}
                   >
-                    <option value="">Sélectionner une filiale</option>
-                    {filiales.map(f => (
-                      <option key={f.id} value={f.id}>{f.nom}</option>
-                    ))}
-                  </select>
+                    <ComboboxInput placeholder="Sélectionner une filiale..." />
+                    <ComboboxContent>
+                      <ComboboxEmpty>Aucune filiale.</ComboboxEmpty>
+                      <ComboboxList>
+                        {(f, idx) => (
+                          <ComboboxItem key={f.id} value={f} index={idx}>
+                            {f.nom}
+                          </ComboboxItem>
+                        )}
+                      </ComboboxList>
+                    </ComboboxContent>
+                  </Combobox>
                 </div>
               )}
               <div className="auth-input-group">
@@ -311,25 +309,39 @@ export const ServiceManager: React.FC<Props> = ({ userRole }) => {
                   <td>
                     {service.sous_service &&
                     service.sous_service.length > 0 ? (
-                      <select
-                        className="auth-input"
-                        style={{
-                          padding: "0.2rem 0.5rem",
-                          fontSize: "0.85rem",
-                          maxWidth: "200px",
-                          backgroundColor: "var(--bg-glass)",
-                        }}
-                        defaultValue=""
+                      <Combobox
+                        items={service.sous_service}
+                        value=""
+                        onChange={() => {}}
+                        style={{ maxWidth: "200px" }}
+                        itemToString={(ss) => ss?.nom_sous_service || ""}
+                        itemToValue={(ss) => ss?.id || ""}
                       >
-                        <option value="" disabled>
-                          Voir les {service.sous_service.length} sous-services
-                        </option>
-                        {service.sous_service.map((ss) => (
-                          <option key={ss.id} value={ss.id} disabled>
-                            {ss.nom_sous_service}
-                          </option>
-                        ))}
-                      </select>
+                        <ComboboxInput
+                          placeholder={`Voir les ${service.sous_service.length} sous-services`}
+                          style={{
+                            height: "32px",
+                            fontSize: "0.85rem",
+                            padding: "0 2rem 0 0.75rem",
+                            borderRadius: "8px",
+                            backgroundColor: "rgba(255, 255, 255, 0.4)",
+                          }}
+                        />
+                        <ComboboxContent style={{ zIndex: 100 }}>
+                          <ComboboxList style={{ maxHeight: "180px" }}>
+                            {(ss, idx) => (
+                              <ComboboxItem
+                                key={ss.id}
+                                value={ss}
+                                index={idx}
+                                style={{ pointerEvents: "none", opacity: 0.8 }}
+                              >
+                                {ss.nom_sous_service}
+                              </ComboboxItem>
+                            )}
+                          </ComboboxList>
+                        </ComboboxContent>
+                      </Combobox>
                     ) : (
                       <span
                         className="text-secondary"

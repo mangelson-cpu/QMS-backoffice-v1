@@ -195,6 +195,7 @@ body:has(.app-layout) {
         opacity: 0;
         transform: translateY(-4px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -340,9 +341,7 @@ body:has(.app-layout) {
 
 .navbar-icon-btn:hover {
     background: #f1f5f9;
-    /* Light gray background on hover instead of transparent/white */
     color: #1e293b;
-    /* Near black on hover */
 }
 
 .navbar-divider {
@@ -406,7 +405,8 @@ body:has(.app-layout) {
     text-transform: uppercase;
 }
 
-.profile-avatar-btn:hover, .profile-avatar-btn:focus {
+.profile-avatar-btn:hover,
+.profile-avatar-btn:focus {
     transform: scale(1.05);
     box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
     border-color: #f8fafc;
@@ -427,8 +427,15 @@ body:has(.app-layout) {
 }
 
 @keyframes profilePop {
-    from { opacity: 0; transform: scale(0.95); }
-    to { opacity: 1; transform: scale(1); }
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
 }
 
 .profile-popover-header {
@@ -519,9 +526,17 @@ body:has(.app-layout) {
 }
 
 @keyframes pulse {
-    0% { opacity: 0.6; }
-    50% { opacity: 1; }
-    100% { opacity: 0.6; }
+    0% {
+        opacity: 0.6;
+    }
+
+    50% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0.6;
+    }
 }
 
 .navbar-breadcrumb {
@@ -810,13 +825,20 @@ body:has(.app-layout) {
 
 /* Primary Button */
 .primary-gradient-btn {
-    padding: 0.8rem 1.5rem;
+    height: 42px;
+    box-sizing: border-box;
+    padding: 0 1.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    flex-shrink: 0;
     border-radius: 12px;
     border: none;
     background: linear-gradient(135deg, var(--primary-color, #8b5cf6), var(--secondary-color, #d4145a));
     color: #ffffff;
     font-weight: 700;
-    font-size: 1rem;
+    font-size: 0.95rem;
     cursor: pointer;
     box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
     transition: all 0.3s ease;
