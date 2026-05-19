@@ -301,7 +301,8 @@ body:has(.app-layout) {
     justify-content: space-between;
     padding: 0 2.5rem;
     flex-shrink: 0;
-    z-index: 5;
+    position: relative;
+    z-index: 100;
 }
 
 .navbar-left {
