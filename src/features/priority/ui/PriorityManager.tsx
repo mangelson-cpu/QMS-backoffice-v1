@@ -2,14 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { apiClient, setSelectedFiliale, getSelectedFiliale } from "../../../shared/api/apiClient";
 import { FiZap, FiFilter, FiInbox } from "react-icons/fi";
 import type { Priority, UserRole } from "../../../shared/types";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-} from "@/components/ui/combobox";
+
 
 interface Props {
   userRole: UserRole;
@@ -203,23 +196,39 @@ export const PriorityManager: React.FC<Props> = ({ userRole, currentUserAgenceId
         </div>
         <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
           {isSuperAdmin && (
-            <Combobox
-              items={filiales}
-              value={selectedFilialeId}
-              onChange={handleFilialeChange}
-            >
-              <ComboboxInput leftIcon={<FiFilter style={{ color: "var(--primary-color, #8b5cf6)" }} />} placeholder="Filtrer par filiale..." />
-              <ComboboxContent>
-                <ComboboxEmpty>Aucune filiale.</ComboboxEmpty>
-                <ComboboxList>
-                  {(f, idx) => (
-                    <ComboboxItem key={f.id} value={f} index={idx}>
-                      {f.nom}
-                    </ComboboxItem>
-                  )}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
+            <div className="auth-input-group" style={{ margin: 0, position: "relative" }}>
+              <FiFilter
+                style={{
+                  position: "absolute",
+                  left: "1rem",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  color: "var(--primary-color, #8b5cf6)",
+                  pointerEvents: "none",
+                  fontSize: "1.1rem"
+                }}
+              />
+              <select
+                className="auth-select"
+                value={selectedFilialeId}
+                onChange={(e) => handleFilialeChange(e.target.value)}
+                style={{
+                  minWidth: "220px",
+                  paddingLeft: "2.6rem",
+                  height: "42px",
+                  paddingTop: 0,
+                  paddingBottom: 0,
+                  borderRadius: "12px"
+                }}
+              >
+                <option value="">Filtrer par filiale...</option>
+                {filiales.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.nom}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
           {isSuperAdmin && (
             <button className="primary-gradient-btn" onClick={openCreateModal}>
@@ -245,26 +254,21 @@ export const PriorityManager: React.FC<Props> = ({ userRole, currentUserAgenceId
 
             <form className="auth-form" onSubmit={handleSubmit}>
               {isSuperAdmin && (
-                <div className="auth-input-group" style={{ position: "relative", zIndex: 1100 }}>
+                <div className="auth-input-group">
                   <label className="auth-input-label">Filiale</label>
-                  <Combobox
-                    items={filiales}
+                  <select
+                    className="auth-select"
                     value={modalFilialeId}
-                    onChange={(val) => setModalFilialeId(val)}
-                    style={{ maxWidth: "100%" }}
+                    onChange={(e) => setModalFilialeId(e.target.value)}
+                    required
                   >
-                    <ComboboxInput placeholder="Sélectionner une filiale..." />
-                    <ComboboxContent>
-                      <ComboboxEmpty>Aucune filiale.</ComboboxEmpty>
-                      <ComboboxList>
-                        {(f, idx) => (
-                          <ComboboxItem key={f.id} value={f} index={idx}>
-                            {f.nom}
-                          </ComboboxItem>
-                        )}
-                      </ComboboxList>
-                    </ComboboxContent>
-                  </Combobox>
+                    <option value="">Sélectionner une filiale...</option>
+                    {filiales.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.nom}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
               <div className="auth-input-group">

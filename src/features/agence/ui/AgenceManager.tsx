@@ -1,14 +1,8 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { FiBriefcase, FiFilter, FiInbox } from "react-icons/fi";
 import type { Agence } from "../../../shared/types";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-} from "@/components/ui/combobox";
+import { apiClient, setSelectedFiliale, getSelectedFiliale } from "../../../shared/api/apiClient";
+
 
 export const AgenceManager: React.FC = () => {
   const [agences, setAgences] = useState<Agence[]>([]);
@@ -24,7 +18,12 @@ export const AgenceManager: React.FC = () => {
   
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [filiales, setFiliales] = useState<any[]>([]);
-  const [selectedFilialeId, setSelectedFilialeId] = useState<string>("");
+  const [selectedFilialeId, setSelectedFilialeIdState] = useState<string>(getSelectedFiliale() || "");
+
+  const handleFilialeChange = (id: string) => {
+    setSelectedFilialeIdState(id);
+    setSelectedFiliale(id);
+  };
 
   useEffect(() => {
     // 1. Récupérer l'utilisateur pour connaître son rôle
@@ -33,7 +32,7 @@ export const AgenceManager: React.FC = () => {
       if (!token) return;
 
       try {
-        const resUser = await fetch("http://localhost:3000/api/auth/me", {
+        const resUser = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/auth/me`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (resUser.ok) {
@@ -42,15 +41,19 @@ export const AgenceManager: React.FC = () => {
 
           // Si super_admin, récupérer les filiales
           if (user.role === "super_admin") {
-            const resFiliales = await fetch("http://localhost:3000/api/filiales", {
-              headers: { Authorization: `Bearer ${token}` }
-            });
-            if (resFiliales.ok) {
-              const { filiales } = await resFiliales.json();
-              setFiliales(filiales || []);
-              if (filiales.length > 0) {
-                setSelectedFilialeId(filiales[0].id);
+            try {
+              const data = await apiClient.get('/filiales');
+              setFiliales(data.filiales || []);
+              const currentId = getSelectedFiliale();
+              if (!currentId && data.filiales?.length > 0) {
+                const firstId = data.filiales[0].id;
+                setSelectedFilialeIdState(firstId);
+                setSelectedFiliale(firstId);
+              } else if (currentId) {
+                setSelectedFilialeIdState(currentId);
               }
+            } catch (err) {
+              console.error('Erreur filiales:', err);
             }
           }
         }
@@ -74,7 +77,7 @@ export const AgenceManager: React.FC = () => {
         headers['x-filiale-id'] = selectedFilialeId;
       }
 
-      const res = await fetch("http://localhost:3000/api/agences", { headers });
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/agences`, { headers });
       if (res.ok) {
         const data = await res.json();
         setAgences(data.agences || []);
@@ -132,9 +135,10 @@ export const AgenceManager: React.FC = () => {
         headers['x-filiale-id'] = targetFilialeId;
       }
 
+      const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
       const url = editingAgence 
-        ? `http://localhost:3000/api/agences/${editingAgence.id}`
-        : "http://localhost:3000/api/agences";
+        ? `${baseUrl}/api/agences/${editingAgence.id}`
+        : `${baseUrl}/api/agences`;
       
       const method = editingAgence ? "PUT" : "POST";
 
@@ -178,7 +182,7 @@ export const AgenceManager: React.FC = () => {
         headers['x-filiale-id'] = selectedFilialeId;
       }
 
-      const res = await fetch(`http://localhost:3000/api/agences/${id}`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/agences/${id}`, {
         method: "DELETE",
         headers
       });
@@ -228,23 +232,39 @@ export const AgenceManager: React.FC = () => {
 
         <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
           {currentUser?.role === "super_admin" && (
-            <Combobox
-              items={filiales}
-              value={selectedFilialeId}
-              onChange={setSelectedFilialeId}
-            >
-              <ComboboxInput leftIcon={<FiFilter style={{ color: "var(--primary-color, #8b5cf6)" }} />} placeholder="Sélectionner une filiale..." />
-              <ComboboxContent>
-                <ComboboxEmpty>Aucune filiale.</ComboboxEmpty>
-                <ComboboxList>
-                  {(f, idx) => (
-                    <ComboboxItem key={f.id} value={f} index={idx}>
-                      {f.nom}
-                    </ComboboxItem>
-                  )}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
+            <div className="auth-input-group" style={{ margin: 0, position: "relative" }}>
+              <FiFilter
+                style={{
+                  position: "absolute",
+                  left: "1rem",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  color: "var(--primary-color, #8b5cf6)",
+                  pointerEvents: "none",
+                  fontSize: "1.1rem"
+                }}
+              />
+              <select
+                className="auth-select"
+                value={selectedFilialeId}
+                onChange={(e) => handleFilialeChange(e.target.value)}
+                style={{
+                  minWidth: "220px",
+                  paddingLeft: "2.6rem",
+                  height: "42px",
+                  paddingTop: 0,
+                  paddingBottom: 0,
+                  borderRadius: "12px"
+                }}
+              >
+                <option value="">Sélectionner une filiale...</option>
+                {filiales.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.nom}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
 
           <button className="primary-gradient-btn" onClick={openCreateModal}>
@@ -279,26 +299,21 @@ export const AgenceManager: React.FC = () => {
 
             <form className="auth-form" onSubmit={handleSubmit}>
               {currentUser?.role === "super_admin" && (
-                <div className="auth-input-group" style={{ position: "relative", zIndex: 1100 }}>
+                <div className="auth-input-group">
                   <label className="auth-input-label">Filiale</label>
-                  <Combobox
-                    items={filiales}
+                  <select
+                    className="auth-select"
                     value={modalFilialeId}
-                    onChange={(val) => setModalFilialeId(val)}
-                    style={{ maxWidth: "100%" }}
+                    onChange={(e) => setModalFilialeId(e.target.value)}
+                    required
                   >
-                    <ComboboxInput placeholder="Sélectionner une filiale..." />
-                    <ComboboxContent>
-                      <ComboboxEmpty>Aucune filiale.</ComboboxEmpty>
-                      <ComboboxList>
-                        {(f, idx) => (
-                          <ComboboxItem key={f.id} value={f} index={idx}>
-                            {f.nom}
-                          </ComboboxItem>
-                        )}
-                      </ComboboxList>
-                    </ComboboxContent>
-                  </Combobox>
+                    <option value="">Sélectionner une filiale...</option>
+                    {filiales.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.nom}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
               <div className="auth-input-group">

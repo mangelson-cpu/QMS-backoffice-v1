@@ -1,7 +1,7 @@
 // Client API centralisé - Remplace supabaseClient.ts
 // Gère automatiquement : Token JWT + Header x-filiale-id (multi-tenant)
 
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api`;
 
 // Stockage local de la filiale sélectionnée (pour le super_admin)
 let selectedFilialeId: string | null = localStorage.getItem('selected_filiale_id');

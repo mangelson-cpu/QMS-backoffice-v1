@@ -12,13 +12,14 @@ export const FilialesPage: React.FC = () => {
   const [filiales, setFiliales] = useState<Filiale[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [nomFiliale, setNomFiliale] = useState('');
+  const [editingFiliale, setEditingFiliale] = useState<Filiale | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
   const fetchFiliales = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:3000/api/filiales', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/filiales`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -34,41 +35,67 @@ export const FilialesPage: React.FC = () => {
     fetchFiliales();
   }, []);
 
-  const handleCreateFiliale = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!nomFiliale.trim()) return;
+
     setLoading(true);
     setMessage('');
     
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:3000/api/filiales', {
-        method: 'POST',
+      const url = editingFiliale 
+        ? `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/filiales/${editingFiliale.id}`
+        : `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/filiales`;
+      
+      const method = editingFiliale ? 'PUT' : 'POST';
+      const bodyPayload = editingFiliale 
+        ? { nom: nomFiliale.trim() } 
+        : { nom_filiale: nomFiliale.trim() };
+
+      const res = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ nom_filiale: nomFiliale })
+        body: JSON.stringify(bodyPayload)
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Erreur lors de la création');
+        throw new Error(data.error || 'Erreur lors de l\'opération');
       }
 
-      setMessage(data.message);
+      setMessage(editingFiliale ? 'Filiale modifiée avec succès.' : data.message);
       setNomFiliale('');
+      setEditingFiliale(null);
       fetchFiliales();
       
       setTimeout(() => {
         setIsModalOpen(false);
         setMessage('');
-      }, 2000);
+      }, 1500);
     } catch (err: any) {
-      setMessage(err.message);
+      setMessage(err.message || 'Erreur lors de l\'opération');
     } finally {
       setLoading(false);
     }
+  };
+
+  const openCreateModal = () => {
+    setEditingFiliale(null);
+    setNomFiliale('');
+    setIsModalOpen(true);
+    setMessage('');
+  };
+
+  const openEditModal = (filiale: Filiale) => {
+    setEditingFiliale(filiale);
+    setNomFiliale(filiale.nom);
+    setIsModalOpen(true);
+    setMessage('');
   };
 
   return (
@@ -78,7 +105,7 @@ export const FilialesPage: React.FC = () => {
           <h1>Gestion des filiales</h1>
           <p>Supervisez et créez de nouvelles filiales isolées (architecture multi-tenant)</p>
         </div>
-        <button className="primary-gradient-btn" onClick={() => setIsModalOpen(true)}>
+        <button className="primary-gradient-btn" onClick={openCreateModal}>
           <FiPlus style={{ marginRight: '0.5rem', display: 'inline-block', verticalAlign: 'middle' }} />
           Créer une filiale
         </button>
@@ -133,8 +160,11 @@ export const FilialesPage: React.FC = () => {
                     {new Date(filiale.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
                   </td>
                   <td style={{ textAlign: "right" }}>
-                    {/* Boutons d'actions factices pour le moment (pour le design) */}
-                    <button className="icon-btn edit" title="Modifier (Non implémenté)">
+                    <button 
+                      className="icon-btn edit" 
+                      title="Modifier"
+                      onClick={() => openEditModal(filiale)}
+                    >
                       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
@@ -151,18 +181,29 @@ export const FilialesPage: React.FC = () => {
       {isModalOpen && (
         <div className="modal-overlay" onClick={() => !loading && setIsModalOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={() => setIsModalOpen(false)}>
+            <button 
+              className="modal-close-btn" 
+              onClick={() => {
+                setIsModalOpen(false);
+                setEditingFiliale(null);
+                setNomFiliale('');
+              }}
+            >
               ×
             </button>
             <div className="auth-card-header" style={{ marginBottom: "2rem" }}>
               <div className="auth-card-icon"><FiBriefcase style={{ color: 'var(--primary-color)' }} /></div>
-              <h2 className="auth-card-title">Nouvelle Filiale</h2>
+              <h2 className="auth-card-title">
+                {editingFiliale ? "Modifier la Filiale" : "Nouvelle Filiale"}
+              </h2>
               <p className="auth-card-subtitle">
-                La création génèrera un schéma de base de données isolé complet.
+                {editingFiliale 
+                  ? "Modifiez le nom de la filiale." 
+                  : "La création génèrera un schéma de base de données isolé complet."}
               </p>
             </div>
 
-            <form className="auth-form" onSubmit={handleCreateFiliale}>
+            <form className="auth-form" onSubmit={handleSubmit}>
               <div className="auth-input-group">
                 <label className="auth-input-label">Nom de la filiale</label>
                 <input
@@ -176,7 +217,9 @@ export const FilialesPage: React.FC = () => {
               </div>
               
               <button type="submit" className="auth-button" disabled={loading}>
-                {loading ? 'Création et génération de BDD...' : 'Créer la filiale'}
+                {loading 
+                  ? (editingFiliale ? 'Modification...' : 'Création et génération de BDD...') 
+                  : (editingFiliale ? 'Modifier la filiale' : 'Créer la filiale')}
               </button>
 
               {message && (

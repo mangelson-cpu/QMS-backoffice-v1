@@ -31,7 +31,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onLogout }) => {
       const token = localStorage.getItem("token");
       if (token) {
         try {
-          const res = await fetch("http://localhost:3000/api/auth/me", {
+          const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/auth/me`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           if (res.ok) {
